@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BS 보호자 모니터</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .pick { max-width: 720px; margin: 10vh auto 0; padding: 0 20px; }
+  .pick h1 { display: flex; align-items: center; gap: 12px; font-size: 28px; margin: 0 0 8px; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 28px; }
+  .opt { display: block; text-decoration: none; border-radius: 20px; padding: 28px 24px; border: 1px solid var(--line); }
+  .opt .t { font-size: 22px; font-weight: 900; }
+  .opt .d { font-size: 14px; margin-top: 8px; }
+  .opt.r { background: #fff; color: #0f172a; }
+  .opt.r .d { color: #64748b; }
+  .opt.i { background: #1c212c; color: #f1f5f9; border-color: #2c3342; }
+  .opt.i .d { color: #94a3b8; }
+  .opt:hover { outline: 3px solid var(--primary); }
+  .demo { display: inline-block; margin-top: 22px; color: var(--muted); font-size: 14px; }
+  @media (max-width: 600px) { .opts { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body class="light">
+<div class="pick">
+  <h1><span class="logo">BAEK<br>SAN</span>BS 보호자 모니터</h1>
+  <div class="muted">이 컴퓨터에서 사용할 화면을 고르세요. 고른 화면 주소를 즐겨찾기 해두면 다음부터 바로 열립니다.</div>
+  <div class="opts">
+    <a class="opt r" href="reception.html"><div class="t">리셉션</div><div class="d">환자 추가 · 상태 변경 · 메모<br>의국 콜요청 수신</div></a>
+    <a class="opt i" href="internal.html"><div class="t">의국</div><div class="d">내원 알림 확인 · 콜요청<br>보호자 동선 확인</div></a>
+  </div>
+  <a class="demo" href="demo.html">두 화면을 한 번에 보는 데모 →</a>
+</div>
+</body>
+</html>

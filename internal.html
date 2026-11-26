@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BS 보호자 모니터 (의국)</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .top h1 { font-size: 22px; }
+  .icon-btn.on { border-color: var(--primary); }
+
+  /* 내원 확인 배너 */
+  .arrive { border: 2px solid #ef4444; background: linear-gradient(180deg, #3a1518, #2a1316); border-radius: 18px; padding: 16px 18px; margin-bottom: 16px; animation: pulse 1.3s infinite; }
+  .arrive-h { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .arrive-h .t { font-size: 22px; font-weight: 900; color: #fecaca; }
+  .arrive-h .sp { flex: 1; }
+  .arrive-list { display: flex; flex-direction: column; gap: 8px; }
+  .arrive-item { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,.06); border-radius: 12px; padding: 10px 12px; }
+  .arrive-item .nm { font-size: 20px; font-weight: 900; color: #fff; }
+  .arrive-item .m { color: #fca5a5; font-size: 14px; }
+  .arrive-item .sp { flex: 1; }
+  .btn.ack { background: #22c55e; border-color: #22c55e; color: #052e14; font-size: 16px; padding: 10px 22px; }
+  .btn.ackall { background: #fff; border-color: #fff; color: #7f1d1d; }
+
+  /* 카드 */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .pc { background: var(--card); border: 1.5px solid var(--line); border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+  .pc.unack { border: 2px solid #ef4444; animation: pulse 1.3s infinite; }
+  .pc.call { border-color: #f59e0b; }
+  .pc.done { opacity: .5; }
+  .pc-h { display: flex; align-items: flex-start; gap: 10px; }
+  .pc-h .nm { font-size: 22px; font-weight: 900; letter-spacing: -.4px; flex: 1; word-break: keep-all; }
+  .meta { color: var(--muted); font-size: 14px; }
+  .meta b { color: #e2e8f0; }
+  .meta .warn { color: #fb923c; font-weight: 800; }
+  .meta .alert { color: #f87171; font-weight: 900; animation: blink 1.2s infinite; }
+  .memo { background: #252c3a; border-radius: 10px; padding: 7px 10px; font-size: 14px; color: #e2e8f0; }
+  .tl { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }
+  .tl .step { background: #252c3a; padding: 2px 7px; border-radius: 6px; }
+  .tl .arr { color: #475569; }
+  .callst { font-size: 14px; font-weight: 800; color: #fbbf24; }
+  .callst .ok { color: #4ade80; }
+  .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .acts .btn { padding: 9px 14px; }
+  .btn.callreq { background: #262d3a; }
+  .btn.callreq:not(:disabled):hover { background: #303849; }
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); grid-column: 1 / -1; }
+  .err { background: #7f1d1d; color: #fee2e2; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-weight: 700; }
+  .summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .summary .chip { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; color: var(--muted); }
+  .summary .chip b { color: var(--text); }
+</style>
+</head>
+<body class="dark">
+<div class="wrap">
+  <div class="top">
+    <h1><span class="logo">BAEK<br>SAN</span>BS 보호자 모니터 (의국)</h1>
+    <div class="sp"></div>
+    <span id="who" class="muted small"></span>
+    <button id="btnDone" class="icon-btn" title="귀가한 환자 표시/숨김">귀가 숨김</button>
+    <button id="btnSound" class="icon-btn" title="알림음 켜기/끄기">🔊</button>
+    <button id="btnNotify" class="icon-btn" title="창이 가려져 있어도 바탕화면 알림 받기">🔔</button>
+    <button id="btnLogout" class="icon-btn" hidden>로그아웃</button>
+  </div>
+
+  <div id="err"></div>
+  <div id="arrive"></div>
+  <div id="summary" class="summary"></div>
+  <div id="cards" class="cards"></div>
+</div>
+
+<div class="foot">
+  <span id="conn" class="pill">연결 중…</span>
+  <button id="btnTest" class="pill dark">연결 테스트</button>
+</div>
+
+<script type="module">
+import {
+  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank,
+  esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, badgeStyle,
+  toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
+} from './common.js';
+
+const $ = (id) => document.getElementById(id);
+const TITLE = 'BS 보호자 모니터 (의국)';
+let store, patients = {}, prev = null;
+let showDone = (() => { try { return localStorage.getItem('bsm.showDone') === '1'; } catch { return false; } })();
+const arrivalAlarm = new RepeatingAlarm('arrival');
+
+soundGate('의국 화면 시작 — 클릭하세요');
+
+try { store = await createStore(); }
+catch (e) { $('err').innerHTML = `<div class="err">서버 연결 모듈을 불러오지 못했습니다: ${esc(e.message)}</div>`; throw e; }
+
+if (store.auth) {
+  const user = await loginScreen(store, TITLE);
+  $('who').textContent = user.email || '';
+  $('btnLogout').hidden = false;
+  $('btnLogout').onclick = () => store.auth.signOut().then(() => location.reload());
+}
+
+store.onConnection((ok) => {
+  const c = $('conn');
+  if (store.mode === 'demo') { c.className = 'pill demo'; c.textContent = '데모 모드 · 이 브라우저 안에서만 공유'; return; }
+  c.className = ok ? 'pill' : 'pill bad';
+  c.textContent = ok ? '연결됨' : '연결 끊김 — 재연결 중';
+});
+$('btnTest').onclick = async () => {
+  try { const ms = await store.ping(); toast(store.mode === 'demo' ? '데모 모드: 이 브라우저 안의 다른 탭과 공유 중입니다' : `서버 응답 정상 (${ms}ms)`); }
+  catch (e) { toast('연결 테스트 실패: ' + (e.code || e.message)); }
+};
+
+function paintBtns() {
+  $('btnSound').textContent = Sound.enabled ? '🔊 알림음' : '🔇 꺼짐';
+  $('btnSound').classList.toggle('off', !Sound.enabled);
+  const n = notifyState();
+  $('btnNotify').textContent = n === 'granted' ? '🔔 바탕화면 알림 켜짐' : '🔔 바탕화면 알림';
+  $('btnNotify').classList.toggle('off', n !== 'granted');
+  $('btnDone').textContent = showDone ? '귀가 표시 중' : '귀가 숨김';
+}
+$('btnSound').onclick = () => { Sound.unlock(); Sound.setEnabled(!Sound.enabled); paintBtns(); if (Sound.enabled) Sound.play('chime'); };
+$('btnNotify').onclick = async () => { const r = await requestNotify(); paintBtns(); if (r === 'denied') toast('브라우저 설정에서 이 사이트의 알림을 허용해 주세요'); };
+$('btnDone').onclick = () => { showDone = !showDone; try { localStorage.setItem('bsm.showDone', showDone ? '1' : '0'); } catch {} paintBtns(); render(); };
+paintBtns();
+
+// ── 동작 ───────────────────────────────────
+const ack = (id) => patients[id] && !patients[id].ackAt && store.update(id, { ackAt: NOW });
+document.body.addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-act]'); if (!b) return;
+  const id = b.dataset.id, act = b.dataset.act;
+  if (act === 'ackall') { Object.keys(patients).forEach((pid) => { if (isUnacked(patients[pid])) ack(pid); }); return; }
+  if (!patients[id]) return;
+  if (act === 'ack') ack(id);
+  else if (act === 'call') { await store.update(id, { call: { at: NOW, seenAt: null } }); toast(`📣 ${displayName(patients[id])} 콜요청 → 리셉션`); }
+  else if (act === 'uncall') { await store.update(id, { call: null }); toast('콜요청 취소됨'); }
+});
+
+// ── 렌더 ───────────────────────────────────
+const isUnacked = (p) => p && !p.ackAt && p.status !== '귀가';
+
+function sorted() {
+  return Object.entries(patients).map(([id, p]) => ({ id, ...p }))
+    .filter((p) => showDone || p.status !== '귀가')
+    .sort((a, b) =>
+      (isUnacked(b) - isUnacked(a)) ||
+      (!!b.call - !!a.call) ||
+      (groupRank(a.status) - groupRank(b.status)) ||
+      ((a.statusAt || 0) - (b.statusAt || 0)));
+}
+
+function render() {
+  const now = store.now();
+  const all = Object.entries(patients).map(([id, p]) => ({ id, ...p }));
+  const unacked = all.filter(isUnacked).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+  $('arrive').innerHTML = unacked.length ? `
+    <div class="arrive">
+      <div class="arrive-h"><div class="t">🔔 새 내원 ${unacked.length}건 — 확인해 주세요</div><div class="sp"></div>
+        ${unacked.length > 1 ? '<button class="btn ackall" data-act="ackall">모두 확인</button>' : ''}</div>
+      <div class="arrive-list">${unacked.map((p) => `
+        <div class="arrive-item"><div><div class="nm">${esc(displayName(p))}</div>
+          <div class="m">내원 ${fmtClock(p.createdAt)} · <span class="tick" data-k="wait" data-id="${p.id}"></span> 경과${p.memo ? ' · 📝 ' + esc(p.memo) : ''}</div></div>
+          <div class="sp"></div><button class="btn ack" data-act="ack" data-id="${p.id}">✓ 확인</button></div>`).join('')}
+      </div>
+    </div>` : '';
+
+  // 요약
+  const active = all.filter((p) => p.status !== '귀가');
+  const cnt = (f) => active.filter(f).length;
+  $('summary').innerHTML = active.length ? [
+    ['원내 관리', active.length],
+    ['상담·면회 대기', cnt((p) => STATUS[p.status]?.group === 'wait')],
+    ['진료실', cnt((p) => STATUS[p.status]?.group === 'room')],
+    ['라운지', cnt((p) => p.status === '라운지')],
+    ['외출', cnt((p) => p.status === '외출')],
+    ['콜요청 중', cnt((p) => !!p.call)],
+  ].map(([k, v]) => `<span class="chip">${k} <b>${v}</b></span>`).join('') : '';
+
+  const list = sorted();
+  $('cards').innerHTML = list.length ? list.map((p) => {
+    const un = isUnacked(p);
+    const cls = ['pc', un ? 'unack' : '', p.call ? 'call' : '', p.status === '귀가' ? 'done' : ''].join(' ');
+    const logs = logList(p).slice(-4);
+    const callLine = p.call
+      ? `<div class="callst">📣 콜요청 중 · <span class="tick" data-k="ago" data-t="${p.call.at || now}"></span> 전 · ${p.call.seenAt ? '<span class="ok">리셉션 확인 ✓</span>' : '리셉션 알림 중…'}</div>`
+      : '';
+    return `<div class="${cls}">
+      <div class="pc-h"><div class="nm">${esc(displayName(p))}</div><span class="badge" style="${badgeStyle(p.status)}">${esc(p.status)}</span></div>
+      <div class="meta"><span class="tick" data-k="el" data-id="${p.id}"></span> · 내원 ${fmtClock(p.createdAt)}</div>
+      ${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}
+      ${logs.length > 1 ? `<div class="tl">${logs.map((l, i) => `${i ? '<span class="arr">→</span>' : ''}<span class="step">${fmtHM(l.at)} ${esc(l.s)}</span>`).join('')}</div>` : ''}
+      ${callLine}
+      <div class="acts">
+        ${un ? `<button class="btn ack" data-act="ack" data-id="${p.id}">✓ 내원 확인</button>` : ''}
+        <button class="btn callreq" data-act="call" data-id="${p.id}" ${p.call ? 'disabled' : ''}>📣 콜요청하기</button>
+        <button class="btn" data-act="uncall" data-id="${p.id}" ${p.call ? '' : 'disabled'}>콜요청취소</button>
+      </div>
+    </div>`;
+  }).join('') : `<div class="empty">현재 원내 보호자가 없습니다.<br>리셉션에서 환자를 추가하면 여기에 알림과 함께 표시됩니다.</div>`;
+
+  tick();
+}
+
+function tick() {
+  const now = store.now();
+  document.querySelectorAll('.tick').forEach((el) => {
+    const k = el.dataset.k;
+    if (k === 'ago') { el.textContent = fmtElapsed(now - Number(el.dataset.t)); return; }
+    const p = patients[el.dataset.id]; if (!p) return;
+    if (k === 'wait') el.textContent = fmtSec(now - (p.createdAt || now));
+    else if (k === 'el') {
+      const lv = waitLevel(p, now);
+      const ms = now - (p.statusAt || now);
+      el.innerHTML = `${esc(p.status)} <b class="${lv}">${ms < 60000 ? '방금 변경' : fmtElapsed(ms) + '째'}</b>`;
+    }
+  });
+  const n = Object.values(patients).filter(isUnacked).length;
+  document.title = n ? `🔔(${n}) 새 내원 — ${TITLE}` : TITLE;
+}
+setInterval(tick, 1000);
+
+// ── 데이터 수신 ─────────────────────────────
+store.onPatients((data) => {
+  patients = data || {};
+  let newArrival = false;
+  if (prev) {
+    for (const [id, p] of Object.entries(patients)) {
+      const o = prev[id];
+      if (!o && isUnacked(p)) { newArrival = true; desktopNotify('🔔 새 내원', displayName(p)); }
+      if (o && o.status !== p.status && SETTINGS.internalChimeStatuses.includes(p.status)) {
+        const isCallDone = p.status.endsWith('콜완료');
+        Sound.play(isCallDone ? 'done' : 'chime');
+        toast(`${displayName(p)} → ${p.status}`);
+        desktopNotify(`${p.status}`, displayName(p));
+      }
+      if (o && o.call && p.call && !o.call.seenAt && p.call.seenAt) toast(`리셉션이 콜요청을 확인했습니다 — ${displayName(p)}`);
+    }
+  }
+  prev = patients;
+  arrivalAlarm.update(Object.values(patients).some(isUnacked), newArrival);
+  render();
+}, (err) => {
+  $('err').innerHTML = `<div class="err">데이터를 읽을 권한이 없습니다 (${esc(err.code || err.message)}). 허용된 계정으로 로그인했는지 확인하세요.</div>`;
+});
+</script>
+</body>
+</html>

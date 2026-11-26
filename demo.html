@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BS 보호자 모니터 — 데모 (리셉션 + 의국)</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; background: #0b0e14; }
+  .bar { height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: #0b0e14; color: #e2e8f0; font-size: 14px; border-bottom: 1px solid #222a38; }
+  .bar b { font-size: 15px; }
+  .bar .sp { flex: 1; }
+  .bar .hint { color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 7px 12px; font: inherit; cursor: pointer; white-space: nowrap; }
+  .panes { display: flex; height: calc(100% - 52px); }
+  .pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .pane + .pane { border-left: 3px solid #222a38; }
+  .lbl { padding: 6px 12px; font-size: 12px; font-weight: 800; letter-spacing: .3px; color: #94a3b8; background: #0b0e14; }
+  iframe { flex: 1; border: 0; width: 100%; background: #fff; }
+  @media (max-width: 900px) { .panes { flex-direction: column; } .pane + .pane { border-left: 0; border-top: 3px solid #222a38; } .hint { display: none; } }
+</style>
+</head>
+<body>
+<div class="bar">
+  <b>BS 보호자 모니터 · 데모</b>
+  <span class="hint">왼쪽(리셉션)에서 환자를 추가 → 오른쪽(의국)에서 알림·확인 → 의국에서 콜요청 → 리셉션에서 콜완료</span>
+  <span class="sp"></span>
+  <button id="reset">데모 데이터 초기화</button>
+</div>
+<div class="panes">
+  <div class="pane"><div class="lbl">리셉션 화면 (리셉션 PC 3대)</div><iframe id="f1" src="reception.html" title="리셉션"></iframe></div>
+  <div class="pane"><div class="lbl">의국 화면 (의국 PC 3~4대)</div><iframe id="f2" src="internal.html" title="의국"></iframe></div>
+</div>
+<script>
+  // 두 화면 사이에 메시지를 전달 (데모 모드 전용)
+  const frames = [document.getElementById('f1'), document.getElementById('f2')];
+  window.addEventListener('message', (e) => {
+    if (!e.data || !e.data.bsm) return;
+    frames.forEach((f) => { if (f.contentWindow !== e.source) try { f.contentWindow.postMessage(e.data, '*'); } catch (_) {} });
+  });
+  document.getElementById('reset').onclick = () => {
+    try { localStorage.removeItem('bsm.demo.v1'); } catch (_) {}
+    const empty = { bsm: { type: 'state', from: 'reset', mid: 'reset' + Date.now(), state: { patients: {}, ts: Date.now() } } };
+    frames.forEach((f) => { try { f.contentWindow.postMessage(empty, '*'); } catch (_) {} });
+  };
+</script>
+</body>
+</html>

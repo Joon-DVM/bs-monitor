@@ -1,0 +1,65 @@
+/* BS 보호자 모니터 — 공통 스타일 (body.light = 리셉션, body.dark = 의국) */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  font-size: 15px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+button { font: inherit; cursor: pointer; }
+input { font: inherit; }
+
+body.light { --bg: #f6f7f9; --card: #ffffff; --line: #e3e6eb; --text: #0f172a; --muted: #64748b; --btn: #f1f4f8; --btn-line: #d5dbe3; --primary: #3b5f9e; --sel: #3b5f9e; }
+body.dark  { --bg: #151922; --card: #1c212c; --line: #2c3342; --text: #f1f5f9; --muted: #94a3b8; --btn: #262d3a; --btn-line: #3a4355; --primary: #5b8def; --sel: #5b8def; }
+body { background: var(--bg); color: var(--text); }
+
+.wrap { max-width: 1100px; margin: 0 auto; padding: 18px 20px 90px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+/* 헤더 */
+.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.top h1 { font-size: 26px; margin: 0; letter-spacing: -0.5px; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.logo { width: 36px; height: 36px; border-radius: 8px; background: #2b4a85; color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 800; line-height: 1; text-align: center; letter-spacing: -0.3px; flex: none; }
+.top .sp { flex: 1; }
+.icon-btn { height: 38px; min-width: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--btn-line); background: var(--btn); color: var(--text); font-size: 14px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.icon-btn.off { opacity: .55; }
+
+/* 버튼 */
+.btn { padding: 11px 18px; border-radius: 12px; border: 1px solid var(--btn-line); background: var(--btn); color: var(--text); font-weight: 700; white-space: nowrap; transition: transform .05s, background .15s; }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn.dark { background: #1e293b; border-color: #1e293b; color: #fff; }
+.btn.warn { background: #f59e0b; border-color: #f59e0b; color: #1f1300; }
+.btn.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+.btn.ok { background: #16a34a; border-color: #16a34a; color: #fff; }
+
+/* 배지 */
+.badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-weight: 800; font-size: 14px; white-space: nowrap; }
+
+/* 연결 상태 */
+.foot { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 8px; z-index: 40; }
+.pill { padding: 7px 14px; border-radius: 999px; font-weight: 700; font-size: 13px; color: #fff; background: #16a34a; border: 0; }
+.pill.bad { background: #dc2626; }
+.pill.demo { background: #f59e0b; color: #1f1300; }
+.pill.dark { background: #1e293b; }
+
+/* 토스트 */
+#toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 60; max-width: 360px; }
+.toast { background: #0f172a; color: #fff; padding: 11px 14px; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.25); display: flex; align-items: center; gap: 12px; font-size: 14px; animation: tin .2s ease-out; }
+.toast button { background: #fff; color: #0f172a; border: 0; border-radius: 8px; padding: 5px 10px; font-weight: 800; }
+@keyframes tin { from { transform: translateY(8px); opacity: 0; } }
+
+/* 첫 클릭 안내 / 로그인 */
+.gate { position: fixed; inset: 0; background: rgba(10,14,22,.72); display: grid; place-items: center; z-index: 100; cursor: pointer; backdrop-filter: blur(2px); }
+.gate-box { background: #fff; color: #0f172a; border-radius: 20px; padding: 30px 36px; text-align: center; max-width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.gate-ico { font-size: 40px; }
+.gate-t { font-size: 20px; font-weight: 800; margin-top: 6px; }
+.gate-s { color: #64748b; font-size: 13px; margin-top: 6px; }
+
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); } 50% { box-shadow: 0 0 0 6px rgba(220,38,38,0); } }
+@keyframes pulseA { 0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,.6); } 50% { box-shadow: 0 0 0 6px rgba(245,158,11,0); } }
+@keyframes blink { 50% { opacity: .45; } }
+[hidden] { display: none !important; }

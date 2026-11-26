@@ -1,0 +1,17 @@
+{
+  "rules": {
+    "bsm": {
+      ".read": "auth != null && auth.token.email_verified == true && (auth.token.email == 'dvmppiru@gmail.com')",
+      ".write": "auth != null && auth.token.email_verified == true && (auth.token.email == 'dvmppiru@gmail.com')",
+      "patients": {
+        "$id": {
+          ".validate": "newData.hasChildren(['cat', 'status', 'createdAt'])",
+          "cat":    { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "owner":  { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "memo":   { ".validate": "newData.isString() && newData.val().length <= 300" },
+          "status": { ".validate": "newData.isString() && newData.val().length <= 20" }
+        }
+      }
+    }
+  }
+}
