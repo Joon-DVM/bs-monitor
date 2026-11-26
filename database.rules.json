@@ -1,8 +1,8 @@
 {
   "rules": {
     "bsm": {
-      ".read": "auth != null && auth.token.email_verified == true && (auth.token.email == 'dvmppiru@gmail.com')",
-      ".write": "auth != null && auth.token.email_verified == true && (auth.token.email == 'dvmppiru@gmail.com')",
+      ".read": "auth != null && auth.token.email_verified == true && (auth.token.email == 'dvmppiru@gmail.com' || auth.token.email == 'bscat5653@gmail.com')",
+      ".write": "auth != null && auth.token.email_verified == true && (auth.token.email == 'dvmppiru@gmail.com' || auth.token.email == 'bscat5653@gmail.com')",
       "patients": {
         "$id": {
           ".validate": "newData.hasChildren(['cat', 'status', 'createdAt'])",
