@@ -56,7 +56,8 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const newId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 export async function createStore() {
-  if (firebaseConfig) return createFirebaseStore();
+  const forceDemo = new URLSearchParams(location.search).has('demo');
+  if (firebaseConfig && !forceDemo) return createFirebaseStore();
   return createLocalStore();
 }
 

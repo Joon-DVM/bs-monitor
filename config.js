@@ -15,7 +15,16 @@
 //   appId: "....",
 // };
 
-export const firebaseConfig = null;
+export const firebaseConfig = {
+  apiKey: "AIzaSyCh6OcS4h2Y8SaELU0Xm-HnlV3kxyER8uY",
+  authDomain: "bs-monitor-45946.firebaseapp.com",
+  databaseURL: "https://bs-monitor-45946-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "bs-monitor-45946",
+  storageBucket: "bs-monitor-45946.firebasestorage.app",
+  messagingSenderId: "706414454444",
+  appId: "1:706414454444:web:c29a9a0176591a08e8a109",
+};
+// 주소 끝에 ?demo=1 을 붙이면 Firebase 대신 데모 모드로 동작합니다 (demo.html 에서 사용).
 
 // 2) 동작 설정
 export const SETTINGS = {
