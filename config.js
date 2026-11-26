@@ -24,6 +24,9 @@ export const firebaseConfig = {
   messagingSenderId: "706414454444",
   appId: "1:706414454444:web:c29a9a0176591a08e8a109",
 };
+// 이 주소에서는 로그인 창을 같은 주소(/__/auth)에서 엽니다 (vercel.json 에서 Firebase 로 연결).
+// 새 주소를 추가하면 Google Cloud 의 OAuth 클라이언트에 https://(주소)/__/auth/handler 도 등록해야 합니다.
+export const authProxyHosts = ['bs-monitor-sandy.vercel.app'];
 // 주소 끝에 ?demo=1 을 붙이면 Firebase 대신 데모 모드로 동작합니다 (demo.html 에서 사용).
 
 // 2) 동작 설정

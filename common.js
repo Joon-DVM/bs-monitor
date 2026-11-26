@@ -1,5 +1,5 @@
 // BS 보호자 모니터 — 공통 로직 (상태 정의 · 저장소 · 알림음 · 유틸)
-import { firebaseConfig, SETTINGS } from './config.js';
+import { firebaseConfig, SETTINGS, authProxyHosts } from './config.js';
 export { SETTINGS };
 
 // ── 상태 정의 ────────────────────────────────────────────────
@@ -132,9 +132,17 @@ async function createFirebaseStore() {
     import(`${CDN}/firebase-database.js`),
     import(`${CDN}/firebase-auth.js`),
   ]);
-  const app = fa.initializeApp(firebaseConfig);
+  // 로그인 창을 우리 주소(/__/auth, vercel.json 에서 Firebase 로 연결)에서 열어
+  // 팝업 차단·쿠키 차단 브라우저에서도 로그인이 되도록 합니다.
+  const cfg = { ...firebaseConfig };
+  if ((authProxyHosts || []).includes(location.host)) cfg.authDomain = location.host;
+  const app = fa.initializeApp(cfg);
   const db = fd.getDatabase(app);
   const auth = fau.getAuth(app);
+  const provider = new fau.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  // 다른 페이지로 이동해서 로그인하고 돌아온 경우 결과 처리
+  const redirectError = fau.getRedirectResult(auth).then(() => null, (e) => e);
   const { ref, onValue, push, set, update, remove, serverTimestamp } = fd;
   const ROOT = 'bsm/patients';
   let offset = 0;
@@ -170,7 +178,18 @@ async function createFirebaseStore() {
     },
     auth: {
       onAuth: (cb) => fau.onAuthStateChanged(auth, cb),
-      signIn: () => fau.signInWithPopup(auth, new fau.GoogleAuthProvider()),
+      redirectError,
+      async signIn() {
+        try { return await fau.signInWithPopup(auth, provider); }
+        catch (e) {
+          // 팝업이 막히면 화면 전환 방식으로 로그인
+          if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/web-storage-unsupported'].includes(e.code)) {
+            return fau.signInWithRedirect(auth, provider);
+          }
+          throw e;
+        }
+      },
+      signInRedirect: () => fau.signInWithRedirect(auth, provider),
       signOut: () => fau.signOut(auth),
     },
   };
@@ -309,7 +328,7 @@ export function loginScreen(store, title) {
   return new Promise((resolve) => {
     const el = document.createElement('div');
     el.className = 'gate';
-    el.innerHTML = `<div class="gate-box"><div class="gate-t">${esc(title)}</div><div class="gate-s" id="lg-msg">병원 구글 계정으로 로그인하세요</div><button class="btn primary" id="lg-btn" style="margin-top:16px">구글 계정으로 로그인</button></div>`;
+    el.innerHTML = `<div class="gate-box"><div class="gate-t">${esc(title)}</div><div class="gate-s" id="lg-msg">병원 구글 계정으로 로그인하세요</div><button class="btn primary" id="lg-btn" style="margin-top:16px">구글 계정으로 로그인</button><div><button class="btn" id="lg-alt" style="margin-top:10px;font-size:13px;padding:8px 14px">로그인 창이 안 뜨면 여기를 누르세요</button></div></div>`;
     document.body.appendChild(el);
     let done = false;
     store.auth.onAuth((u) => { if (u && !done) { done = true; el.remove(); resolve(u); } });
@@ -317,5 +336,11 @@ export function loginScreen(store, title) {
       e.stopPropagation(); Sound.unlock();
       try { await store.auth.signIn(); } catch (err) { el.querySelector('#lg-msg').textContent = '로그인 실패: ' + (err.code || err.message); }
     };
+    el.querySelector('#lg-alt').onclick = async (e) => {
+      e.stopPropagation();
+      el.querySelector('#lg-msg').textContent = '구글 로그인 화면으로 이동합니다…';
+      try { await store.auth.signInRedirect(); } catch (err) { el.querySelector('#lg-msg').textContent = '로그인 실패: ' + (err.code || err.message); }
+    };
+    store.auth.redirectError.then((err) => { if (err && !done) el.querySelector('#lg-msg').textContent = '로그인 실패: ' + (err.code || err.message); });
   });
 }
