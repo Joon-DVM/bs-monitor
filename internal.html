@@ -100,7 +100,7 @@ const $ = (id) => document.getElementById(id);
 const TITLE = 'BS 보호자 모니터 (의국)';
 let store, patients = {}, prev = null;
 let showDone = (() => { try { return localStorage.getItem('bsm.showDone') === '1'; } catch { return false; } })();
-const arrivalAlarm = new RepeatingAlarm('arrival');
+const arrivalRung = new Set();   // 이 PC에서 이미 '딩동'을 울린 내원 (한 번만 울림)
 
 soundGate('의국 화면 시작 — 클릭하세요');
 
@@ -275,7 +275,12 @@ store.onPatients((data) => {
   }
   prev = patients;
   for (const id of Object.keys(autoHoldSent)) if (!isPending(patients[id])) delete autoHoldSent[id];
-  arrivalAlarm.update(Object.values(patients).some(isPending), newArrival);
+  // 새 내원 알림음: 내원 1건당 한 번만 울림 (반복 없음)
+  let ring = false;
+  for (const [id, p] of Object.entries(patients)) {
+    if (isPending(p) && !arrivalRung.has(id)) { arrivalRung.add(id); ring = true; }
+  }
+  if (ring) Sound.play('arrival');
   render();
 }, (err) => {
   $('err').innerHTML = `<div class="err">데이터를 읽을 권한이 없습니다 (${esc(err.code || err.message)}). 허용된 계정으로 로그인했는지 확인하세요.</div>`;
