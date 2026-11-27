@@ -287,6 +287,12 @@ export function waitLevel(p, now) {
   return '';
 }
 export const logList = (p) => Object.values(p.log || {}).filter((l) => l && l.at).sort((a, b) => a.at - b.at);
+// 동선 전체 (첫 기록은 '내원'으로 표시)
+export function routeHtml(p) {
+  const logs = logList(p);
+  if (!logs.length) return '';
+  return logs.map((l, i) => `${i ? '<span class="arr">→</span>' : ''}<span class="step${i ? '' : ' first'}">${fmtHM(l.at)} ${i ? esc(l.s) : '내원'}</span>`).join('');
+}
 export const isToday = (t, now) => { const a = new Date(t), b = new Date(now); return a.toDateString() === b.toDateString(); };
 
 export function badgeStyle(s) {

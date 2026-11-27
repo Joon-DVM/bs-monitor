@@ -27,11 +27,19 @@
   .arrive-item .sp { flex: 1; }
   .btn.ack { background: #22c55e; border-color: #22c55e; color: #052e14; font-size: 16px; padding: 10px 22px; }
   .btn.ackall { background: #fff; border-color: #fff; color: #7f1d1d; }
+  .btn.hold { background: #3a3f4c; border-color: #5b6478; color: #f1f5f9; font-size: 16px; padding: 10px 20px; }
+  .btn.holdall { background: transparent; border-color: #fca5a5; color: #fecaca; }
+  .arrive-item .cd { color: #fde68a; font-weight: 800; }
 
   /* 카드 */
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); grid-auto-flow: row dense; gap: 14px; align-items: start; }
+  .pc.wide { grid-column: span 2; }
+  @media (max-width: 700px) { .pc.wide { grid-column: auto; } }
   .pc { background: var(--card); border: 1.5px solid var(--line); border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
   .pc.unack { border: 2px solid #ef4444; animation: pulse 1.3s infinite; }
+  .pc.held { border: 3px solid #ef4444; animation: heldBlink 1s infinite; }
+  @keyframes heldBlink { 0%,100% { border-color: #ef4444; box-shadow: 0 0 0 0 rgba(239,68,68,.6); } 50% { border-color: rgba(239,68,68,.25); box-shadow: 0 0 14px 2px rgba(239,68,68,.35); } }
+  .heldst { font-size: 14px; font-weight: 800; color: #fca5a5; }
   .pc.call { border-color: #f59e0b; }
   .pc.done { opacity: .5; }
   .pc-h { display: flex; align-items: flex-start; gap: 10px; }
@@ -42,7 +50,8 @@
   .meta .alert { color: #f87171; font-weight: 900; animation: blink 1.2s infinite; }
   .memo { background: #252c3a; border-radius: 10px; padding: 7px 10px; font-size: 14px; color: #e2e8f0; }
   .tl { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }
-  .tl .step { background: #252c3a; padding: 2px 7px; border-radius: 6px; }
+  .tl .step { background: #252c3a; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+  .tl .step.first { background: #1e3a5f; color: #bfdbfe; font-weight: 700; }
   .tl .arr { color: #475569; }
   .callst { font-size: 14px; font-weight: 800; color: #fbbf24; }
   .callst .ok { color: #4ade80; }
@@ -83,7 +92,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank,
-  esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, badgeStyle,
+  esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
 
@@ -131,24 +140,32 @@ paintBtns();
 
 // ── 동작 ───────────────────────────────────
 const ack = (id) => patients[id] && !patients[id].ackAt && store.update(id, { ackAt: NOW });
+const hold = (id, auto = false) => patients[id] && !patients[id].ackAt && !patients[id].holdAt && store.update(id, { holdAt: NOW, holdAuto: auto });
 document.body.addEventListener('click', async (e) => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   const id = b.dataset.id, act = b.dataset.act;
-  if (act === 'ackall') { Object.keys(patients).forEach((pid) => { if (isUnacked(patients[pid])) ack(pid); }); return; }
+  if (act === 'ackall') { Object.keys(patients).forEach((pid) => { if (isPending(patients[pid])) ack(pid); }); return; }
+  if (act === 'holdall') { Object.keys(patients).forEach((pid) => { if (isPending(patients[pid])) hold(pid); }); return; }
   if (!patients[id]) return;
   if (act === 'ack') ack(id);
+  else if (act === 'hold') hold(id);
   else if (act === 'call') { await store.update(id, { call: { at: NOW, seenAt: null } }); toast(`📣 ${displayName(patients[id])} 콜요청 → 리셉션`); }
   else if (act === 'uncall') { await store.update(id, { call: null }); toast('콜요청 취소됨'); }
 });
 
 // ── 렌더 ───────────────────────────────────
-const isUnacked = (p) => p && !p.ackAt && p.status !== '귀가';
+// 대기(알림 중) → 보류(카드 빨간 깜빡임) → 완료
+const isPending = (p) => p && !p.ackAt && !p.holdAt && p.status !== '귀가';
+const isHeld = (p) => p && !p.ackAt && !!p.holdAt && p.status !== '귀가';
+const firstSeen = {};   // 이 PC가 알림을 처음 본 시각 (자동 보류 계산용)
+const autoHoldSent = {};
 
 function sorted() {
   return Object.entries(patients).map(([id, p]) => ({ id, ...p }))
     .filter((p) => showDone || p.status !== '귀가')
     .sort((a, b) =>
-      (isUnacked(b) - isUnacked(a)) ||
+      (isPending(b) - isPending(a)) ||
+      (isHeld(b) - isHeld(a)) ||
       (!!b.call - !!a.call) ||
       (groupRank(a.status) - groupRank(b.status)) ||
       ((a.statusAt || 0) - (b.statusAt || 0)));
@@ -157,16 +174,16 @@ function sorted() {
 function render() {
   const now = store.now();
   const all = Object.entries(patients).map(([id, p]) => ({ id, ...p }));
-  const unacked = all.filter(isUnacked).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const unacked = all.filter(isPending).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 
   $('arrive').innerHTML = unacked.length ? `
     <div class="arrive">
-      <div class="arrive-h"><div class="t">🔔 새 내원 ${unacked.length}건 — 확인해 주세요</div><div class="sp"></div>
-        ${unacked.length > 1 ? '<button class="btn ackall" data-act="ackall">모두 확인</button>' : ''}</div>
+      <div class="arrive-h"><div class="t">🔔 새 내원 ${unacked.length}건</div><div class="sp"></div>
+        ${unacked.length > 1 ? '<button class="btn holdall" data-act="holdall">모두 보류</button><button class="btn ackall" data-act="ackall">모두 완료</button>' : ''}</div>
       <div class="arrive-list">${unacked.map((p) => `
         <div class="arrive-item"><div><div class="nm">${esc(displayName(p))}</div>
-          <div class="m">내원 ${fmtClock(p.createdAt)} · <span class="tick" data-k="wait" data-id="${p.id}"></span> 경과${p.memo ? ' · 📝 ' + esc(p.memo) : ''}</div></div>
-          <div class="sp"></div><button class="btn ack" data-act="ack" data-id="${p.id}">✓ 확인</button></div>`).join('')}
+          <div class="m">내원 ${fmtClock(p.createdAt)} · <span class="cd tick" data-k="cd" data-id="${p.id}"></span>${p.memo ? ' · 📝 ' + esc(p.memo) : ''}</div></div>
+          <div class="sp"></div><button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">✓ 완료</button></div>`).join('')}
       </div>
     </div>` : '';
 
@@ -184,9 +201,9 @@ function render() {
 
   const list = sorted();
   $('cards').innerHTML = list.length ? list.map((p) => {
-    const un = isUnacked(p);
-    const cls = ['pc', un ? 'unack' : '', p.call ? 'call' : '', p.status === '귀가' ? 'done' : ''].join(' ');
-    const logs = logList(p).slice(-4);
+    const un = isPending(p), held = isHeld(p);
+    const steps = logList(p).length;
+    const cls = ['pc', un ? 'unack' : '', held ? 'held' : '', p.call ? 'call' : '', p.status === '귀가' ? 'done' : '', steps > SETTINGS.wideRouteSteps ? 'wide' : ''].join(' ');
     const callLine = p.call
       ? `<div class="callst">📣 콜요청 중 · <span class="tick" data-k="ago" data-t="${p.call.at || now}"></span> 전 · ${p.call.seenAt ? '<span class="ok">리셉션 확인 ✓</span>' : '리셉션 알림 중…'}</div>`
       : '';
@@ -194,10 +211,12 @@ function render() {
       <div class="pc-h"><div class="nm">${esc(displayName(p))}</div><span class="badge" style="${badgeStyle(p.status)}">${esc(p.status)}</span></div>
       <div class="meta"><span class="tick" data-k="el" data-id="${p.id}"></span> · 내원 ${fmtClock(p.createdAt)}</div>
       ${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}
-      ${logs.length > 1 ? `<div class="tl">${logs.map((l, i) => `${i ? '<span class="arr">→</span>' : ''}<span class="step">${fmtHM(l.at)} ${esc(l.s)}</span>`).join('')}</div>` : ''}
+      ${steps ? `<div class="tl">${routeHtml(p)}</div>` : ''}
+      ${held ? `<div class="heldst">⏸ 내원 알림 보류 중 · ${fmtHM(p.holdAt)}${p.holdAuto ? ' (자동)' : ''}</div>` : ''}
       ${callLine}
       <div class="acts">
-        ${un ? `<button class="btn ack" data-act="ack" data-id="${p.id}">✓ 내원 확인</button>` : ''}
+        ${un ? `<button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">✓ 완료</button>` : ''}
+        ${held ? `<button class="btn ack" data-act="ack" data-id="${p.id}">✓ 완료</button>` : ''}
         <button class="btn callreq" data-act="call" data-id="${p.id}" ${p.call ? 'disabled' : ''}>📣 콜요청하기</button>
         <button class="btn" data-act="uncall" data-id="${p.id}" ${p.call ? '' : 'disabled'}>콜요청취소</button>
       </div>
@@ -213,15 +232,28 @@ function tick() {
     const k = el.dataset.k;
     if (k === 'ago') { el.textContent = fmtElapsed(now - Number(el.dataset.t)); return; }
     const p = patients[el.dataset.id]; if (!p) return;
-    if (k === 'wait') el.textContent = fmtSec(now - (p.createdAt || now));
+    if (k === 'cd') {
+      const left = Math.ceil((holdDeadline(el.dataset.id, now) - now) / 1000);
+      el.textContent = left > 0 ? `${left}초 후 자동 보류` : '보류 처리 중…';
+    }
     else if (k === 'el') {
       const lv = waitLevel(p, now);
       const ms = now - (p.statusAt || now);
       el.innerHTML = `${esc(p.status)} <b class="${lv}">${ms < 60000 ? '방금 변경' : fmtElapsed(ms) + '째'}</b>`;
     }
   });
-  const n = Object.values(patients).filter(isUnacked).length;
+  // 자동 보류: 알림을 본 뒤 정해진 시간 동안 완료/보류가 없으면 보류 처리
+  for (const [id, p] of Object.entries(patients)) {
+    if (!isPending(p) || autoHoldSent[id]) continue;
+    if (now >= holdDeadline(id, now)) { autoHoldSent[id] = true; hold(id, true); }
+  }
+  const n = Object.values(patients).filter(isPending).length;
   document.title = n ? `🔔(${n}) 새 내원 — ${TITLE}` : TITLE;
+}
+function holdDeadline(id, now) {
+  const p = patients[id];
+  if (!firstSeen[id]) firstSeen[id] = now;
+  return Math.max(p?.createdAt || now, firstSeen[id]) + SETTINGS.autoHoldSec * 1000;
 }
 setInterval(tick, 1000);
 
@@ -232,7 +264,7 @@ store.onPatients((data) => {
   if (prev) {
     for (const [id, p] of Object.entries(patients)) {
       const o = prev[id];
-      if (!o && isUnacked(p)) { newArrival = true; desktopNotify('🔔 새 내원', displayName(p)); }
+      if (!o && isPending(p)) { newArrival = true; desktopNotify('🔔 새 내원', displayName(p)); }
       if (o && o.status !== p.status && SETTINGS.internalChimeStatuses.includes(p.status)) {
         const isCallDone = p.status.endsWith('콜완료');
         Sound.play(isCallDone ? 'done' : 'chime');
@@ -243,7 +275,8 @@ store.onPatients((data) => {
     }
   }
   prev = patients;
-  arrivalAlarm.update(Object.values(patients).some(isUnacked), newArrival);
+  for (const id of Object.keys(autoHoldSent)) if (!isPending(patients[id])) delete autoHoldSent[id];
+  arrivalAlarm.update(Object.values(patients).some(isPending), newArrival);
   render();
 }, (err) => {
   $('err').innerHTML = `<div class="err">데이터를 읽을 권한이 없습니다 (${esc(err.code || err.message)}). 허용된 계정으로 로그인했는지 확인하세요.</div>`;

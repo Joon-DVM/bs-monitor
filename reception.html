@@ -64,9 +64,12 @@
   .ack.ok { color: #15803d; background: #dcfce7; }
   .ack.wait { color: #b91c1c; background: #fee2e2; }
   .ack.late { color: #fff; background: #dc2626; animation: pulse 1.2s infinite; }
+  .ack.hold { color: #9a3412; background: #ffedd5; border: 1.5px solid #fb923c; animation: blink 1.4s infinite; }
   .when { font-size: 14px; color: var(--muted); text-align: right; }
-  .tl { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 13px; }
-  .tl .step { padding: 3px 8px; border-radius: 6px; background: #f1f5f9; }
+  .tl { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 13px; }
+  .tl .lbl { font-weight: 800; color: var(--muted); margin-right: 2px; }
+  .tl .step { padding: 3px 8px; border-radius: 6px; background: #f1f5f9; white-space: nowrap; }
+  .tl .step.first { background: #dbeafe; color: #1e3a8a; font-weight: 800; }
   .tl .arr { color: #94a3b8; }
   .listfoot { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 14px; color: var(--muted); }
   .listfoot .btn { padding: 7px 12px; font-size: 13px; }
@@ -119,7 +122,7 @@
     <div id="list" class="rows"></div>
     <div class="listfoot">
       <span id="count"></span>
-      <button id="btnCleanup" class="btn">귀가 환자 목록에서 정리</button>
+      <span><button id="btnShowDone" class="btn">귀가 보기</button> <button id="btnCleanup" class="btn">귀가 환자 기록 삭제</button></span>
     </div>
   </div>
 </div>
@@ -132,7 +135,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES,
-  esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, isToday, badgeStyle,
+  esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
 
@@ -194,8 +197,17 @@ async function setStatus(id, s) {
   const p = patients[id]; if (!p || p.status === s) return;
   const f = { status: s, statusAt: NOW };
   if (p.call && !KEEP_CALL.includes(s)) f.call = null;
+  const prevStatus = p.status;
   await store.update(id, f, s);
+  if (s === '귀가' && !showDone) {
+    if (selected === id) select(null);
+    toast(`${displayName(p)} 귀가 — 목록에서 숨김`, { ms: 7000, action: { label: '되돌리기', run: () => store.update(id, { status: prevStatus, statusAt: NOW }, prevStatus) } });
+  }
 }
+
+// ── 귀가 환자 표시/숨김 ─────────────────────
+let showDone = (() => { try { return localStorage.getItem('bsm.rShowDone') === '1'; } catch { return false; } })();
+$('btnShowDone').onclick = () => { showDone = !showDone; try { localStorage.setItem('bsm.rShowDone', showDone ? '1' : '0'); } catch {} render(); };
 
 async function doDelete(id) {
   const p = patients[id]; if (!p) return;
@@ -251,6 +263,7 @@ $('callBanner').addEventListener('click', async (e) => {
 // ── 렌더 ───────────────────────────────────
 function sorted() {
   return Object.entries(patients).map(([id, p]) => ({ id, ...p }))
+    .filter((p) => showDone || p.status !== '귀가')
     .sort((a, b) => ((a.status === '귀가') - (b.status === '귀가')) || ((a.createdAt || 0) - (b.createdAt || 0)));
 }
 
@@ -295,9 +308,7 @@ function render() {
       const cls = ['row', 'grid', p.id === selected ? 'sel' : '', p.call ? 'call' : '', done ? 'done' : ''].join(' ');
       const tags = (p.call ? `<span class="tag call${p.call.seenAt ? ' seen' : ''}">📣 콜요청</span>` : '')
         + (p.createdAt && !isToday(p.createdAt, now) ? '<span class="tag old">이전 날짜</span>' : '');
-      const tl = p.id === selected
-        ? `<div class="tl"><span class="muted">동선</span>${logList(p).map((l, i) => `${i ? '<span class="arr">→</span>' : ''}<span class="step">${fmtHM(l.at)} ${esc(l.s)}</span>`).join('')}</div>`
-        : '';
+      const tl = logList(p).length ? `<div class="tl"><span class="lbl">동선</span>${routeHtml(p)}</div>` : '';
       return `<div class="${cls}" data-id="${p.id}">
         <div><div class="nm">${esc(displayName(p))}${tags}</div>${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}</div>
         <div><span class="badge" style="${badgeStyle(p.status)}">${esc(p.status)}</span></div>
@@ -308,8 +319,11 @@ function render() {
       </div>`;
     }).join('');
   }
-  const active = list.filter((p) => p.status !== '귀가').length;
-  $('count').textContent = `원내 관리 중 ${active}명 · 귀가 ${list.length - active}명`;
+  const allP = Object.values(patients);
+  const active = allP.filter((p) => p.status !== '귀가').length;
+  const doneN = allP.length - active;
+  $('count').textContent = `원내 관리 중 ${active}명 · 귀가 ${doneN}명${showDone ? '' : ' (숨김)'}`;
+  $('btnShowDone').textContent = showDone ? '귀가 숨기기' : `귀가 보기 (${doneN})`;
 
   tick();
 }
@@ -326,6 +340,7 @@ function tick() {
       el.className = 'el tick ' + waitLevel(p, now);
     } else if (k === 'ack') {
       if (p.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(p.ackAt)}`; }
+      else if (p.holdAt) { el.className = 'ack tick hold'; el.textContent = `⏸ 의국 보류 ${fmtHM(p.holdAt)}`; }
       else {
         const w = now - (p.createdAt || now);
         el.className = 'ack tick ' + (w >= SETTINGS.ackWarnSec * 1000 ? 'late' : 'wait');
@@ -350,6 +365,7 @@ store.onPatients((data) => {
         desktopNotify('📣 의국 콜요청', `${displayName(p)} — 현재 ${p.status}`);
       }
       if (o && !o.ackAt && p.ackAt) toast(`의국 확인 ✓ ${displayName(p)}`);
+      if (o && !o.holdAt && p.holdAt && !p.ackAt) toast(`의국 보류 ⏸ ${displayName(p)}`);
     }
   }
   prev = patients;
