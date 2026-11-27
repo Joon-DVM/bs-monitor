@@ -43,7 +43,9 @@
   .callb .btn { padding: 9px 14px; }
 
   /* 목록 */
-  .grid { display: grid; grid-template-columns: minmax(180px, 2.2fr) 1.1fr 0.9fr 1.3fr 1fr; align-items: center; gap: 10px; }
+  .grid { display: grid; grid-template-columns: minmax(170px, 2fr) 1fr 1.7fr 1.3fr 0.9fr; align-items: center; gap: 10px; }
+  .el .v { font-weight: 800; color: #0f172a; font-size: 14px; }
+  .el .s { font-size: 13px; color: #475569; font-weight: 700; }
   .lhead { padding: 12px 18px; border: 1px solid var(--line); border-radius: 12px; background: #f7f9fc; font-weight: 800; font-size: 14px; color: #334155; }
   .rows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
   .row { padding: 12px 18px; border: 1.5px solid var(--line); border-radius: 14px; background: #fff; cursor: pointer; transition: border-color .12s; }
@@ -60,6 +62,8 @@
   .el { font-weight: 700; color: #334155; }
   .el.warn { color: #c2410c; }
   .el.alert { color: #dc2626; animation: blink 1.2s infinite; }
+  .el.warn .s { color: #c2410c; }
+  .el.alert .s { color: #dc2626; }
   .ack { font-weight: 800; font-size: 14px; display: inline-block; padding: 4px 10px; border-radius: 8px; }
   .ack.ok { color: #15803d; background: #dcfce7; }
   .ack.wait { color: #b91c1c; background: #fee2e2; }
@@ -117,7 +121,7 @@
 
   <div class="card">
     <div class="lhead grid">
-      <div>이름</div><div>상태</div><div class="c-el">상태 경과</div><div class="c-ack">의국 확인</div><div class="c-when" style="text-align:right">내원 시각</div>
+      <div>이름</div><div>상태</div><div class="c-el">경과 시간</div><div class="c-ack">의국 확인</div><div class="c-when" style="text-align:right">내원 시각</div>
     </div>
     <div id="list" class="rows"></div>
     <div class="listfoot">
@@ -134,7 +138,7 @@
 
 <script type="module">
 import {
-  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES,
+  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -336,8 +340,9 @@ function tick() {
     if (k === 'ago') { el.textContent = fmtElapsed(now - Number(el.dataset.t)); return; }
     const p = patients[el.dataset.id]; if (!p) return;
     if (k === 'el') {
-      el.textContent = fmtElapsed(now - (p.statusAt || now));
-      el.className = 'el tick ' + waitLevel(p, now);
+      const t = stayParts(p, now);
+      el.innerHTML = `<div class="v">${esc(t.visit)}</div><div class="s">${esc(t.status)}</div>`;
+      el.className = 'el tick ' + t.level;
     } else if (k === 'ack') {
       if (p.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(p.ackAt)}`; }
       else if (p.holdAt) { el.className = 'ack tick hold'; el.textContent = `⏸ 의국 보류 ${fmtHM(p.holdAt)}`; }

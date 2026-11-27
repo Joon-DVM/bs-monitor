@@ -91,7 +91,7 @@
 
 <script type="module">
 import {
-  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank,
+  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -209,7 +209,7 @@ function render() {
       : '';
     return `<div class="${cls}">
       <div class="pc-h"><div class="nm">${esc(displayName(p))}</div><span class="badge" style="${badgeStyle(p.status)}">${esc(p.status)}</span></div>
-      <div class="meta"><span class="tick" data-k="el" data-id="${p.id}"></span> · 내원 ${fmtClock(p.createdAt)}</div>
+      <div class="meta"><span class="tick" data-k="el" data-id="${p.id}"></span></div>
       ${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}
       ${steps ? `<div class="tl">${routeHtml(p)}</div>` : ''}
       ${held ? `<div class="heldst">⏸ 내원 알림 보류 중 · ${fmtHM(p.holdAt)}${p.holdAuto ? ' (자동)' : ''}</div>` : ''}
@@ -237,9 +237,8 @@ function tick() {
       el.textContent = left > 0 ? `${left}초 후 자동 보류` : '보류 처리 중…';
     }
     else if (k === 'el') {
-      const lv = waitLevel(p, now);
-      const ms = now - (p.statusAt || now);
-      el.innerHTML = `${esc(p.status)} <b class="${lv}">${ms < 60000 ? '방금 변경' : fmtElapsed(ms) + '째'}</b>`;
+      const t = stayParts(p, now);
+      el.innerHTML = `<b>${esc(t.visit)}</b> · <b class="${t.level}">${esc(t.status)}</b>`;
     }
   });
   // 자동 보류: 알림을 본 뒤 정해진 시간 동안 완료/보류가 없으면 보류 처리

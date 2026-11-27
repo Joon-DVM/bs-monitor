@@ -279,6 +279,16 @@ export function fmtSec(ms) {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+// '2시간 52분째' / '3분째' / '방금'
+export function fmtStay(ms) { return (ms == null || ms < 60000) ? '방금' : fmtElapsed(ms) + '째'; }
+// 내원 후 경과 + 마지막 상태 변경 후 경과
+export function stayParts(p, now) {
+  return {
+    visit: `내원 후 ${fmtStay(now - (p.createdAt || now))}`,
+    status: `${p.status} 후 ${fmtStay(now - (p.statusAt || now))}`,
+    level: waitLevel(p, now),
+  };
+}
 export function waitLevel(p, now) {
   if (!WAIT_STATUSES.includes(p.status)) return '';
   const m = (now - (p.statusAt || now)) / 60000;
