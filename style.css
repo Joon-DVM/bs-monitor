@@ -21,7 +21,7 @@ body { background: var(--bg); color: var(--text); }
 /* 헤더 */
 .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .top h1 { font-size: 26px; margin: 0; letter-spacing: -0.5px; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-.logo { width: 36px; height: 36px; border-radius: 8px; background: #2b4a85; color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 800; line-height: 1; text-align: center; letter-spacing: -0.3px; flex: none; }
+.logo { width: 38px; height: 38px; border-radius: 9px; flex: none; display: block; }
 .top .sp { flex: 1; }
 .icon-btn { height: 38px; min-width: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--btn-line); background: var(--btn); color: var(--text); font-size: 14px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .icon-btn.off { opacity: .55; }
