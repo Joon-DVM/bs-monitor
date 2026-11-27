@@ -139,7 +139,7 @@
 
 <script type="module">
 import {
-  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts,
+  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -341,11 +341,13 @@ function tick() {
     if (k === 'ago') { el.textContent = fmtElapsed(now - Number(el.dataset.t)); return; }
     const p = patients[el.dataset.id]; if (!p) return;
     if (k === 'el') {
+      if (isSilent(p)) { el.innerHTML = ''; el.className = 'el tick'; return; }
       const t = stayParts(p, now);
       el.innerHTML = `<div class="v">${esc(t.visit)}</div><div class="s">${esc(t.status)}</div>`;
       el.className = 'el tick ' + t.level;
     } else if (k === 'ack') {
-      if (p.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(p.ackAt)}`; }
+      if (isSilent(p)) { el.className = 'ack tick'; el.textContent = ''; }
+      else if (p.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(p.ackAt)}`; }
       else if (p.holdAt) { el.className = 'ack tick hold'; el.textContent = `⏸ 의국 보류 ${fmtHM(p.holdAt)}`; }
       else {
         const w = now - (p.createdAt || now);

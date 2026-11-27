@@ -91,7 +91,7 @@
 
 <script type="module">
 import {
-  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts,
+  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -155,8 +155,8 @@ document.body.addEventListener('click', async (e) => {
 
 // ── 렌더 ───────────────────────────────────
 // 대기(알림 중) → 보류(카드 빨간 깜빡임) → 완료
-const isPending = (p) => p && !p.ackAt && !p.holdAt && p.status !== '귀가';
-const isHeld = (p) => p && !p.ackAt && !!p.holdAt && p.status !== '귀가';
+const isPending = (p) => p && !p.ackAt && !p.holdAt && p.status !== '귀가' && !isSilent(p);
+const isHeld = (p) => p && !p.ackAt && !!p.holdAt && p.status !== '귀가' && !isSilent(p);
 const firstSeen = {};   // 이 PC가 알림을 처음 본 시각 (자동 보류 계산용)
 const autoHoldSent = {};
 
@@ -237,6 +237,7 @@ function tick() {
       el.textContent = left > 0 ? `${left}초 후 자동 보류` : '보류 처리 중…';
     }
     else if (k === 'el') {
+      if (isSilent(p)) { el.innerHTML = `<b>${esc(p.status)}</b>`; return; }
       const t = stayParts(p, now);
       el.innerHTML = `<b>${esc(t.visit)}</b> · <b class="${t.level}">${esc(t.status)}</b>`;
     }
@@ -264,7 +265,7 @@ store.onPatients((data) => {
     for (const [id, p] of Object.entries(patients)) {
       const o = prev[id];
       if (!o && isPending(p)) { newArrival = true; desktopNotify('🔔 새 내원', displayName(p)); }
-      if (o && o.status !== p.status && SETTINGS.internalChimeStatuses.includes(p.status)) {
+      if (o && o.status !== p.status && !isSilent(p) && SETTINGS.internalChimeStatuses.includes(p.status)) {
         const isCallDone = p.status.endsWith('콜완료');
         Sound.play(isCallDone ? 'done' : 'chime');
         toast(`${displayName(p)} → ${p.status}`);
