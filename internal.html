@@ -92,7 +92,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent,
-  esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, badgeStyle,
+  esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, routeSteps, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
 
@@ -202,7 +202,7 @@ function render() {
   const list = sorted();
   $('cards').innerHTML = list.length ? list.map((p) => {
     const un = isPending(p), held = isHeld(p);
-    const steps = logList(p).length;
+    const steps = routeSteps(p).length;
     const cls = ['pc', un ? 'unack' : '', held ? 'held' : '', p.call ? 'call' : '', p.status === '귀가' ? 'done' : '', steps > SETTINGS.wideRouteSteps ? 'wide' : ''].join(' ');
     const callLine = p.call
       ? `<div class="callst">📣 콜요청 중 · <span class="tick" data-k="ago" data-t="${p.call.at || now}"></span> 전 · ${p.call.seenAt ? '<span class="ok">리셉션 확인 ✓</span>' : '리셉션 알림 중…'}</div>`

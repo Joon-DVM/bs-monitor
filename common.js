@@ -303,11 +303,25 @@ export function waitLevel(p, now) {
   return '';
 }
 export const logList = (p) => Object.values(p.log || {}).filter((l) => l && l.at).sort((a, b) => a.at - b.at);
-// 동선 전체 (첫 기록은 '내원'으로 표시)
-export function routeHtml(p) {
+// 화면에 보여줄 동선
+// - 첫 기록은 '내원'
+// - 잠깐 거쳐 가는 상태(config transientStatuses)는 마지막(현재) 상태일 때만 표시
+// - 숨긴 뒤 같은 상태가 연달아 남으면 하나로 합침 (먼저 시각 유지, 진료실은 재입실이므로 합치지 않음)
+export function routeSteps(p) {
   const logs = logList(p);
-  if (!logs.length) return '';
-  return logs.map((l, i) => `${i ? '<span class="arr">→</span>' : ''}<span class="step${i ? '' : ' first'}">${fmtHM(l.at)} ${i ? esc(l.s) : '내원'}</span>`).join('');
+  const transient = SETTINGS.transientStatuses || [];
+  const out = [];
+  logs.forEach((l, i) => {
+    const first = i === 0, last = i === logs.length - 1;
+    const label = first ? '내원' : l.s;
+    if (!first && !last && transient.includes(l.s)) return;
+    if (!first && out.length && out[out.length - 1].label === label && STATUS[label]?.group !== 'room') return;
+    out.push({ at: l.at, label, first });
+  });
+  return out;
+}
+export function routeHtml(p) {
+  return routeSteps(p).map((st, i) => `${i ? '<span class="arr">→</span>' : ''}<span class="step${st.first ? ' first' : ''}">${fmtHM(st.at)} ${esc(st.label)}</span>`).join('');
 }
 export const isToday = (t, now) => { const a = new Date(t), b = new Date(now); return a.toDateString() === b.toDateString(); };
 
