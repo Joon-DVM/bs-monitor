@@ -81,9 +81,10 @@
   .err { background: #fee2e2; color: #991b1b; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-weight: 700; }
 
   @media (max-width: 820px) {
-    .grid { grid-template-columns: 1fr auto; }
-    .grid .c-el, .grid .c-when, .lhead .c-el, .lhead .c-when, .lhead .c-ack { display: none; }
-    .grid .c-ack { grid-column: 1 / -1; }
+    /* 좁은 창: 1줄 = 이름 | 상태, 2줄 = 경과 시간 | 의국 확인 (내원 시각은 동선 첫 칸에 있음) */
+    .grid { grid-template-columns: 1fr auto; row-gap: 6px; }
+    .grid .c-when, .lhead .c-el, .lhead .c-when, .lhead .c-ack { display: none; }
+    .grid .c-ack { justify-self: end; }
     .inp { width: 100%; }
     .field { flex: 1; min-width: 140px; }
   }
