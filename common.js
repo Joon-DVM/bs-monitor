@@ -346,10 +346,31 @@ export function fmtSec(ms) {
 // '<오늘 통화요청건>' 아래 줄은 남은 건 정리 목록이라 제외, '<내일 …>' 아래 줄은 '내일' 요청으로 표시
 const CALL_RE = /^(입원\s*\/\s*)?([^()\/]+?)\s*\(\s*([^)\/]+?)\s*(?:\/\s*([^)]*?))?\s*\)\s*[-–]\s*(.+)$/;
 // 손으로 쓰다 생기는 흔한 실수도 알아봄: 전각 괄호·대시, 전화번호 뒤 ')' 빠짐
-const CALL_RE_LOOSE = /^(입원\s*\/\s*)?([^()\/]+?)\s*\(\s*([^)\/]+?)\s*\/\s*(0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4})\s*\)?\s*[-–]\s*(.+)$/;
+const CALL_RE_LOOSE = /^(입원\s*\/\s*)?([^()\/]+?)\s*\(\s*([^)\/]+?)\s*[\/,\s]\s*(0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4})\s*\)?\s*[-–]\s*(.+)$/;
+// 괄호 안 전체를 받은 뒤 전화번호를 따로 찾음 (고양이와 전화번호 사이가 '/'가 아니라 띄어쓰기·쉼표여도 됨)
+const CALL_RE_ANY = /^(입원\s*\/\s*)?([^()\/]+?)\s*\(\s*([^)]*?)\s*\)\s*[-–]\s*(.+)$/;
+const PHONE_RE = /0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/;
+const normCallText = (s) => s.replace(/（/g, '(').replace(/）/g, ')').replace(/[－—―]/g, '-');
 function matchCallLine(line) {
-  const t = line.replace(/（/g, '(').replace(/）/g, ')').replace(/[－—―]/g, '-');
-  return t.match(CALL_RE) || t.match(CALL_RE_LOOSE);
+  const t = normCallText(line);
+  let m = t.match(CALL_RE) || t.match(CALL_RE_LOOSE);
+  if (m && (m[4] || !PHONE_RE.test(m[3]))) return m;
+  m = t.match(CALL_RE_ANY);
+  if (!m) return null;
+  const ph = m[3].match(PHONE_RE);
+  const pet = (ph ? m[3].replace(ph[0], '') : m[3]).replace(/[\/,\s]+$/, '').replace(/^[\/,\s]+/, '').trim();
+  if (!pet) return null;
+  return [m[0], m[1], m[2], pet, ph ? ph[0] : '', m[4]];
+}
+// '보호자(고양이 …)' 다음 줄에 '- 용건'을 쓴 경우 한 줄로 합침
+const CALL_HEAD_ONLY = /^(입원\s*\/\s*)?[^()\/]+?\s*\([^)]*\)\s*$/;
+function joinCallLines(lines) {
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const cur = lines[i].trim(), next = (lines[i + 1] || '').trim();
+    if (CALL_HEAD_ONLY.test(normCallText(cur)) && /^[-–－—]/.test(next)) { out.push(cur + ' ' + next); i++; } else out.push(lines[i]);
+  }
+  return out;
 }
 export function parseFlowTime(s) {
   const m = String(s || '').match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
@@ -360,7 +381,7 @@ export function parseCallMessage(msg) {
   if (/^\s*(✅|↪|\[BS모니터\])/.test(text) || msg.sender === 'BS모니터') return [];
   const out = [];
   let header = '', lastReq = null;
-  text.split(/\r?\n/).forEach((raw) => {
+  joinCallLines(text.split(/\r?\n/)).forEach((raw) => {
     const line = raw.trim();
     if (!line) return;
     const h = line.match(/^<\s*(.+?)\s*>$/);
