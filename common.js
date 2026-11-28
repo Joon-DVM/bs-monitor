@@ -352,6 +352,31 @@ export function badgeStyle(s) {
   return `color:${st.color};background:${st.bg}`;
 }
 
+// 새로고침 버튼 + 새 버전 감지
+// 3분마다 화면 파일을 확인해서 바뀌었으면 버튼을 주황색 "새 버전 · 새로고침"으로 바꿈 (자동으로 새로고침하지는 않음)
+export function setupRefresh(btn) {
+  if (!btn) return;
+  btn.onclick = () => location.reload();
+  const files = [location.pathname, '/common.js', '/config.js', '/style.css'];
+  const snap = async () => {
+    try {
+      const texts = await Promise.all(files.map((f) => fetch(f, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''))));
+      return texts.join('\u0000');
+    } catch { return null; }
+  };
+  let base = null;
+  snap().then((t) => { base = t; });
+  setInterval(async () => {
+    if (base == null) { base = await snap(); return; }
+    const now = await snap();
+    if (now != null && now !== base) {
+      btn.classList.add('update');
+      btn.textContent = '⟳ 새 버전 · 새로고침';
+      btn.title = '프로그램이 수정되었습니다. 눌러서 새로 불러오세요.';
+    }
+  }, 3 * 60 * 1000);
+}
+
 // 토스트
 export function toast(msg, opts = {}) {
   let wrap = document.getElementById('toasts');

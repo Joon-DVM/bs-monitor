@@ -96,6 +96,7 @@
     <h1><img class="logo" src="/icons/icon-64.png" alt="BAEKSAN">BS 보호자 모니터 (리셉션)</h1>
     <div class="sp"></div>
     <span id="who" class="muted small"></span>
+    <button id="btnRefresh" class="icon-btn" title="화면 다시 불러오기">⟳ 새로고침</button>
     <button id="btnSound" class="icon-btn" title="알림음 켜기/끄기">🔊 알림음</button>
     <button id="btnNotify" class="icon-btn" title="창이 가려져 있어도 바탕화면 알림 받기">🔔 바탕화면 알림</button>
     <button id="btnLogout" class="icon-btn" hidden>로그아웃</button>
@@ -139,7 +140,7 @@
 
 <script type="module">
 import {
-  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart,
+  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart, setupRefresh,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -148,6 +149,7 @@ const $ = (id) => document.getElementById(id);
 const TITLE = 'BS 보호자 모니터 (리셉션)';
 let store, patients = {}, prev = null, selected = null;
 const callAlarm = new RepeatingAlarm('call');
+setupRefresh(document.getElementById('btnRefresh'));
 
 // 첫 화면 클릭으로 알림음 활성화
 soundGate('리셉션 화면 시작 — 클릭하세요');

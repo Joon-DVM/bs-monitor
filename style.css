@@ -13,7 +13,9 @@ body.light { --bg: #f6f7f9; --card: #ffffff; --line: #e3e6eb; --text: #0f172a; -
 body.dark  { --bg: #151922; --card: #1c212c; --line: #2c3342; --text: #f1f5f9; --muted: #94a3b8; --btn: #262d3a; --btn-line: #3a4355; --primary: #5b8def; --sel: #5b8def; }
 body { background: var(--bg); color: var(--text); }
 
-.wrap { max-width: 1100px; margin: 0 auto; padding: 18px 20px 90px; }
+/* 창 너비 전체 사용 (좌우 여백 최소, 왼쪽 위부터 채움) */
+.wrap { max-width: none; margin: 0; padding: 14px 16px 90px; }
+.icon-btn.update { background: #f59e0b; border-color: #f59e0b; color: #1f1300; font-weight: 800; animation: pulseA 1.4s infinite; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
