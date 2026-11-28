@@ -72,7 +72,7 @@
     <h1><img class="logo" src="/icons/icon-64.png" alt="BAEKSAN">BS 보호자 모니터 (의국)</h1>
     <div class="sp"></div>
     <span id="who" class="muted small"></span>
-    <button id="btnDone" class="icon-btn" title="귀가한 환자 표시/숨김">귀가 숨김</button>
+    <button id="btnDone" class="icon-btn" title="귀가한 보호자 보기/숨기기">귀가 보기</button>
     <button id="btnRefresh" class="icon-btn" title="화면 다시 불러오기">⟳ 새로고침</button>
     <button id="btnSound" class="icon-btn" title="알림음 켜기/끄기">🔊</button>
     <button id="btnNotify" class="icon-btn" title="창이 가려져 있어도 바탕화면 알림 받기">🔔</button>
@@ -94,6 +94,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent, visitStart, setupRefresh,
+  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, routeSteps, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -104,7 +105,7 @@ const TITLE = 'BS 보호자 모니터 (의국)';
 let store, patients = {}, prev = null;
 let showDone = (() => { try { return localStorage.getItem('bsm.showDone') === '1'; } catch { return false; } })();
 setupRefresh(document.getElementById('btnRefresh'));
-const arrivalRung = new Set();   // 이 PC에서 이미 '딩동'을 울린 내원 (한 번만 울림)
+const arrivalRung = new Set();   // 이 PC에서 이미 '딩동'을 울린 대기 알림 (알림 1건당 한 번만 울림)
 
 soundGate('의국 화면 시작 — 클릭하세요');
 
@@ -137,7 +138,8 @@ function paintBtns() {
   const n = notifyState();
   $('btnNotify').textContent = n === 'granted' ? '🔔 바탕화면 알림 켜짐' : '🔔 바탕화면 알림';
   $('btnNotify').classList.toggle('off', n !== 'granted');
-  $('btnDone').textContent = showDone ? '귀가 표시 중' : '귀가 숨김';
+  const doneN = Object.values(patients).filter((p) => p && p.status === '귀가').length;
+  $('btnDone').textContent = showDone ? '귀가 숨기기' : `귀가 보기 (${doneN})`;
 }
 $('btnSound').onclick = () => { Sound.unlock(); Sound.setEnabled(!Sound.enabled); paintBtns(); if (Sound.enabled) Sound.play('chime'); };
 $('btnNotify').onclick = async () => { const r = await requestNotify(); paintBtns(); if (r === 'denied') toast('브라우저 설정에서 이 사이트의 알림을 허용해 주세요'); };
@@ -145,8 +147,8 @@ $('btnDone').onclick = () => { showDone = !showDone; try { localStorage.setItem(
 paintBtns();
 
 // ── 동작 ───────────────────────────────────
-const ack = (id) => patients[id] && !patients[id].ackAt && store.update(id, { ackAt: NOW });
-const hold = (id, auto = false) => patients[id] && !patients[id].ackAt && !patients[id].holdAt && store.update(id, { holdAt: NOW, holdAuto: auto });
+const ack = (id) => alertOf(patients[id]) && !alertOf(patients[id]).ackAt && store.update(id, { 'alert/ackAt': NOW });
+const hold = (id, auto = false) => isAlertPending(patients[id]) && store.update(id, { 'alert/holdAt': NOW, 'alert/holdAuto': auto });
 document.body.addEventListener('click', async (e) => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   const id = b.dataset.id, act = b.dataset.act;
@@ -161,8 +163,9 @@ document.body.addEventListener('click', async (e) => {
 
 // ── 렌더 ───────────────────────────────────
 // 대기(알림 중) → 보류(카드 빨간 깜빡임) → 완료
-const isPending = (p) => p && !p.ackAt && !p.holdAt && p.status !== '귀가' && !isSilent(p);
-const isHeld = (p) => p && !p.ackAt && !!p.holdAt && p.status !== '귀가' && !isSilent(p);
+// 진료대기중·면회대기중으로 바뀔 때마다 알림 → 완료 또는 보류(카드 빨간 깜빡임) → 완료
+const isPending = (p) => isAlertPending(p);
+const isHeld = (p) => isAlertHeld(p);
 const firstSeen = {};   // 이 PC가 알림을 처음 본 시각 (자동 보류 계산용)
 const autoHoldSent = {};
 
@@ -180,15 +183,15 @@ function sorted() {
 function render() {
   const now = store.now();
   const all = Object.entries(patients).map(([id, p]) => ({ id, ...p }));
-  const unacked = all.filter(isPending).sort((a, b) => visitStart(a) - visitStart(b));
+  const unacked = all.filter(isPending).sort((a, b) => (alertOf(a).at || 0) - (alertOf(b).at || 0));
 
   $('arrive').innerHTML = unacked.length ? `
     <div class="arrive">
-      <div class="arrive-h"><div class="t">🔔 새 내원 ${unacked.length}건</div><div class="sp"></div>
+      <div class="arrive-h"><div class="t">🔔 대기 알림 ${unacked.length}건</div><div class="sp"></div>
         ${unacked.length > 1 ? '<button class="btn holdall" data-act="holdall">모두 보류</button><button class="btn ackall" data-act="ackall">모두 완료</button>' : ''}</div>
       <div class="arrive-list">${unacked.map((p) => `
         <div class="arrive-item"><div><div class="nm">${esc(displayName(p))}</div>
-          <div class="m">내원 ${fmtClock(visitStart(p))} · <span class="cd tick" data-k="cd" data-id="${p.id}"></span>${p.memo ? ' · 📝 ' + esc(p.memo) : ''}</div></div>
+          <div class="m"><b>${esc(p.status)}</b> ${fmtHM(alertOf(p).at)} · <span class="cd tick" data-k="cd" data-id="${p.id}"></span>${p.memo ? ' · 📝 ' + esc(p.memo) : ''}</div></div>
           <div class="sp"></div><button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">✓ 완료</button></div>`).join('')}
       </div>
     </div>` : '';
@@ -214,11 +217,11 @@ function render() {
       ? `<div class="callst">📣 콜요청 중 · <span class="tick" data-k="ago" data-t="${p.call.at || now}"></span> 전 · ${p.call.seenAt ? '<span class="ok">리셉션 확인 ✓</span>' : '리셉션 알림 중…'}</div>`
       : '';
     return `<div class="${cls}">
-      <div class="pc-h"><div class="nm">${esc(displayName(p))}</div><span class="badge" style="${badgeStyle(p.status)}">${esc(p.status)}</span></div>
+      <div class="pc-h"><div class="nm">${esc(displayName(p))}</div><span class="badge" style="${badgeStyle(p.status)}">${esc(statusLabel(p))}</span></div>
       <div class="meta"><span class="tick" data-k="el" data-id="${p.id}"></span></div>
       ${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}
       ${steps ? `<div class="tl">${routeHtml(p)}</div>` : ''}
-      ${held ? `<div class="heldst">⏸ 내원 알림 보류 중 · ${fmtHM(p.holdAt)}${p.holdAuto ? ' (자동)' : ''}</div>` : ''}
+      ${held ? `<div class="heldst">⏸ ${esc(p.status)} 알림 보류 중 · ${fmtHM(alertOf(p).holdAt)}${alertOf(p).holdAuto ? ' (자동)' : ''}</div>` : ''}
       ${callLine}
       <div class="acts">
         ${un ? `<button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">✓ 완료</button>` : ''}
@@ -243,34 +246,34 @@ function tick() {
       el.textContent = left > 0 ? `${left}초 후 자동 보류` : '보류 처리 중…';
     }
     else if (k === 'el') {
-      if (isSilent(p)) { el.innerHTML = `<b>${esc(p.status)}</b>`; return; }
+      if (isSilent(p)) { el.innerHTML = `<b>${esc(statusLabel(p))}</b>`; return; }
       const t = stayParts(p, now);
       el.innerHTML = `<b>${esc(t.visit)}</b> · <b class="${t.level}">${esc(t.status)}</b>`;
     }
   });
   // 자동 보류: 알림을 본 뒤 정해진 시간 동안 완료/보류가 없으면 보류 처리
   for (const [id, p] of Object.entries(patients)) {
-    if (!isPending(p) || autoHoldSent[id]) continue;
-    if (now >= holdDeadline(id, now)) { autoHoldSent[id] = true; hold(id, true); }
+    if (!isPending(p) || autoHoldSent[alertKey(id, p)]) continue;
+    if (now >= holdDeadline(id, now)) { autoHoldSent[alertKey(id, p)] = true; hold(id, true); }
   }
   const n = Object.values(patients).filter(isPending).length;
-  document.title = n ? `🔔(${n}) 새 내원 — ${TITLE}` : TITLE;
+  document.title = n ? `🔔(${n}) 대기 알림 — ${TITLE}` : TITLE;
 }
 function holdDeadline(id, now) {
   const p = patients[id];
-  if (!firstSeen[id]) firstSeen[id] = now;
-  return Math.max(p ? visitStart(p) : now, firstSeen[id]) + SETTINGS.autoHoldSec * 1000;
+  const k = alertKey(id, p);
+  if (!firstSeen[k]) firstSeen[k] = now;
+  const a = alertOf(p);
+  return Math.max((a && a.at) || now, firstSeen[k]) + SETTINGS.autoHoldSec * 1000;
 }
 setInterval(tick, 1000);
 
 // ── 데이터 수신 ─────────────────────────────
 store.onPatients((data) => {
   patients = data || {};
-  let newArrival = false;
   if (prev) {
     for (const [id, p] of Object.entries(patients)) {
       const o = prev[id];
-      if (!o && isPending(p)) { newArrival = true; desktopNotify('🔔 새 내원', displayName(p)); }
       if (o && o.status !== p.status && !isSilent(p) && SETTINGS.internalChimeStatuses.includes(p.status)) {
         const isCallDone = p.status.endsWith('콜완료');
         Sound.play(isCallDone ? 'done' : 'chime');
@@ -281,14 +284,20 @@ store.onPatients((data) => {
     }
   }
   prev = patients;
-  for (const id of Object.keys(autoHoldSent)) if (!isPending(patients[id])) delete autoHoldSent[id];
-  for (const id of [...arrivalRung]) if (!isPending(patients[id])) { arrivalRung.delete(id); delete firstSeen[id]; }
-  // 새 내원 알림음: 내원 1건당 한 번만 울림 (반복 없음)
+  // 대기 알림음: 진료대기중·면회대기중 알림 1건당 한 번만 울림 (반복 없음). 내원 자체는 알림 없음
+  const live = new Set(Object.entries(patients).filter(([, p]) => isPending(p) || isHeld(p)).map(([id, p]) => alertKey(id, p)));
+  for (const k of Object.keys(autoHoldSent)) if (!live.has(k)) delete autoHoldSent[k];
+  for (const k of Object.keys(firstSeen)) if (!live.has(k)) delete firstSeen[k];
   let ring = false;
   for (const [id, p] of Object.entries(patients)) {
-    if (isPending(p) && !arrivalRung.has(id)) { arrivalRung.add(id); ring = true; }
+    const k = alertKey(id, p);
+    if (isPending(p) && !arrivalRung.has(k)) {
+      arrivalRung.add(k); ring = true;
+      if (prev !== null) desktopNotify(`🔔 ${p.status}`, displayName(p));
+    }
   }
   if (ring) Sound.play('arrival');
+  paintBtns();
   render();
 }, (err) => {
   $('err').innerHTML = `<div class="err">데이터를 읽을 권한이 없습니다 (${esc(err.code || err.message)}). 허용된 계정으로 로그인했는지 확인하세요.</div>`;

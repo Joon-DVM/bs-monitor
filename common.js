@@ -4,7 +4,7 @@ export { SETTINGS };
 
 // ── 상태 정의 ────────────────────────────────────────────────
 export const STATUS = {
-  '상담대기중':   { group: 'wait',  color: '#b91c1c', bg: '#fee2e2' },
+  '진료대기중':   { group: 'wait',  color: '#b91c1c', bg: '#fee2e2' },
   '면회대기중':   { group: 'wait',  color: '#b91c1c', bg: '#fee2e2' },
   '원내':         { group: 'place', color: '#c2410c', bg: '#ffedd5' },
   '라운지':       { group: 'place', color: '#6d28d9', bg: '#ede9fe' },
@@ -19,11 +19,23 @@ export const STATUS = {
   '4진료실':      { group: 'room',  color: '#15803d', bg: '#dcfce7' },
 };
 export const BUTTON_ROWS = [
-  ['상담대기중', '면회대기중', '원내', '라운지', '외출'],
+  ['진료대기중', '면회대기중', '원내', '라운지', '외출'],
   ['라운지콜완료', '외출콜완료', '귀가', '수납후미귀가'],
   ['1진료실', '2진료실', '3진료실', '4진료실'],
 ];
-export const WAIT_STATUSES = ['상담대기중', '면회대기중'];
+export const WAIT_STATUSES = ['진료대기중', '면회대기중'];
+// 이름이 바뀐 상태 (예전 기록도 새 이름으로 표시)
+const RENAMED = { '상담대기중': '진료대기중' };
+const ren = (s) => RENAMED[s] || s;
+export function normalizePatients(data) {
+  for (const p of Object.values(data || {})) {
+    if (!p) continue;
+    p.status = ren(p.status);
+    if (p.alert && p.alert.status) p.alert.status = ren(p.alert.status);
+    for (const l of Object.values(p.log || {})) if (l && l.s) l.s = ren(l.s);
+  }
+  return data;
+}
 export const INITIAL_STATUS = '원내';
 const GROUP_ORDER = { wait: 0, room: 1, call: 2, place: 3, done: 4 };
 export const groupRank = (s) => GROUP_ORDER[(STATUS[s] || {}).group] ?? 9;
@@ -98,7 +110,7 @@ function createLocalStore() {
   function persist() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
   const callListeners = new Set();
   function emit() {
-    const p = clone(state.patients); listeners.forEach((f) => f(p));
+    const p = normalizePatients(clone(state.patients)); listeners.forEach((f) => f(p));
     const c = clone(state.calls || {}); callListeners.forEach((f) => f(c));
   }
   function commit() { state.ts = Date.now(); persist(); send({ type: 'state', state }); emit(); }
@@ -107,7 +119,7 @@ function createLocalStore() {
   return {
     mode: 'demo',
     now: () => Date.now(),
-    onPatients(cb) { listeners.add(cb); cb(clone(state.patients)); },
+    onPatients(cb) { listeners.add(cb); cb(normalizePatients(clone(state.patients))); },
     onConnection(cb) { cb(true); },
     async add({ cat, owner, memo }) {
       const id = newId(); const t = Date.now();
@@ -162,7 +174,7 @@ async function createFirebaseStore() {
   return {
     mode: 'firebase',
     now: () => Date.now() + offset,
-    onPatients(cb, onError) { return onValue(ref(db, ROOT), (s) => cb(s.val() || {}), onError); },
+    onPatients(cb, onError) { return onValue(ref(db, ROOT), (s) => cb(normalizePatients(s.val() || {})), onError); },
     onConnection(cb) { onValue(ref(db, '.info/connected'), (s) => cb(!!s.val())); },
     async add({ cat, owner, memo }) {
       const r = push(ref(db, ROOT));
@@ -356,7 +368,7 @@ export function fmtStay(ms) { return (ms == null || ms < 60000) ? '방금' : fmt
 export function stayParts(p, now) {
   return {
     visit: `내원 후 ${fmtStay(now - visitStart(p))}`,
-    status: `${p.status} 후 ${fmtStay(now - (p.statusAt || now))}`,
+    status: `${statusLabel(p)} 후 ${fmtStay(now - (p.statusAt || now))}`,
     level: waitLevel(p, now),
   };
 }
@@ -385,6 +397,22 @@ function visitLogs(p) {
   logs.forEach((l, i) => { if (l.s === '귀가' && i < logs.length - 1) start = i + 1; });
   return logs.slice(start);
 }
+// 막 내원해서 아직 상태가 한 번도 바뀌지 않았을 때의 표시
+export const ARRIVAL_LABEL = '내원/진료준비중';
+export function statusLabel(p) {
+  return p && p.status === INITIAL_STATUS && visitLogs(p).length <= 1 ? ARRIVAL_LABEL : (p ? p.status : '');
+}
+
+// 대기 알림: 진료대기중·면회대기중으로 바뀔 때마다 새 알림 (p.alert = {at, status, ackAt, holdAt, holdAuto})
+// 지금 상태와 같은 대기 알림만 유효 (다른 상태로 바뀌면 자동으로 끝)
+export function alertOf(p) {
+  const a = p && p.alert;
+  return a && a.status === p.status && WAIT_STATUSES.includes(p.status) && !isSilent(p) ? a : null;
+}
+export const isAlertPending = (p) => { const a = alertOf(p); return !!a && !a.ackAt && !a.holdAt; };
+export const isAlertHeld = (p) => { const a = alertOf(p); return !!a && !a.ackAt && !!a.holdAt; };
+export const alertKey = (id, p) => `${id}:${(p && p.alert && p.alert.at) || ''}`;
+
 // 이번 방문 시작 시각 (귀가 후 다시 원내로 바뀌면 그 시각)
 export function visitStart(p) {
   const v = visitLogs(p);
@@ -398,7 +426,7 @@ export function routeSteps(p) {
     const first = i === 0, last = i === logs.length - 1;
     const room = STATUS[l.s]?.group === 'room';
     // 지난 진료실은 '진료/상담'으로 통일, 지금 진료실이면 실제 이름
-    const label = first ? '내원' : (room && !last ? (SETTINGS.pastRoomLabel || l.s) : l.s);
+    const label = first ? (logs.length === 1 ? ARRIVAL_LABEL : '내원') : (room && !last ? (SETTINGS.pastRoomLabel || l.s) : l.s);
     if (!first && !last && transient.includes(l.s)) return;
     // 같은 상태가 연달아 남으면 합침 (진료실은 진료 횟수이므로 합치지 않음)
     if (!first && !room && out.length && out[out.length - 1].label === label) return;

@@ -47,7 +47,17 @@
   .el .v { font-weight: 800; color: #0f172a; font-size: 14px; }
   .el .s { font-size: 13px; color: #475569; font-weight: 700; }
   .lhead { padding: 12px 18px; border: 1px solid var(--line); border-radius: 12px; background: #f7f9fc; font-weight: 800; font-size: 14px; color: #334155; }
-  .rows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  /* 보호자 카드: 창 너비에 따라 좌우로 배치 (의국 화면과 같은 방식) */
+  .rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); grid-auto-flow: row dense; gap: 10px; margin-top: 4px; align-items: start; }
+  .rows .empty { grid-column: 1 / -1; }
+  .row.grid { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; column-gap: 10px; align-items: start; }
+  .row.wide { grid-column: span 2; }
+  .row .c-st { justify-self: end; }
+  .row .c-ack { justify-self: end; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .row .c-when, .lhead { display: none; }
+  .mini-ok { border: 0; border-radius: 8px; background: #16a34a; color: #fff; font-weight: 800; font-size: 13px; padding: 5px 10px; }
+  .mini-ok:hover { filter: brightness(1.08); }
+  @media (max-width: 800px) { .row.wide { grid-column: auto; } }
   .row { padding: 12px 18px; border: 1.5px solid var(--line); border-radius: 14px; background: #fff; cursor: pointer; transition: border-color .12s; }
   .row:hover { border-color: #b8c4d6; }
   .row.sel { border: 3px solid var(--sel); padding: 10.5px 16.5px; }
@@ -142,6 +152,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart, setupRefresh,
+  alertOf, statusLabel, routeSteps,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -210,7 +221,8 @@ async function setStatus(id, s) {
   const f = { status: s, statusAt: NOW };
   if (p.call && !KEEP_CALL.includes(s)) f.call = null;
   // 귀가했던 보호자를 다시 원내 등으로 바꾸면 새 내원으로 보고 의국 알림을 다시 보냄
-  if (p.status === '귀가') { f.ackAt = null; f.holdAt = null; f.holdAuto = null; }
+  // 진료대기중·면회대기중으로 바뀌면 의국에 새 대기 알림 (딩동 + 완료/보류), 다른 상태면 알림 끝
+  f.alert = WAIT_STATUSES.includes(s) ? { at: NOW, status: s } : null;
   const prevStatus = p.status;
   await store.update(id, f, s);
   if (s === '귀가' && !showDone) {
@@ -261,6 +273,13 @@ function select(id) {
   render();
 }
 $('list').addEventListener('click', (e) => {
+  const ok = e.target.closest('[data-ack]');
+  if (ok) {   // 리셉션에서 대기 알림 완료 처리 (소리 없음)
+    e.stopPropagation();
+    const p = patients[ok.dataset.ack];
+    if (alertOf(p) && !alertOf(p).ackAt) store.update(ok.dataset.ack, { 'alert/ackAt': NOW });
+    return;
+  }
   const r = e.target.closest('.row'); if (!r) return;
   select(selected === r.dataset.id ? null : r.dataset.id);
 });
@@ -290,7 +309,7 @@ function render() {
   const sp = selected && patients[selected];
   $('selbar').className = 'selbar' + (sp ? ' has' : '');
   $('selbar').innerHTML = sp
-    ? `선택: <b>${esc(displayName(sp))}</b> <span class="badge" style="${badgeStyle(sp.status)}">${esc(sp.status)}</span> <span class="muted">아래 버튼을 누르면 이 환자의 상태가 바뀝니다</span>`
+    ? `선택: <b>${esc(displayName(sp))}</b> <span class="badge" style="${badgeStyle(sp.status)}">${esc(statusLabel(sp))}</span> <span class="muted">아래 버튼을 누르면 이 환자의 상태가 바뀝니다</span>`
     : `<span class="muted">[아래 목록에서 환자를 선택한 뒤 상태 버튼을 누르세요]</span>`;
   document.querySelectorAll('#statusBtns .sbtn').forEach((b) => {
     b.disabled = !sp;
@@ -304,7 +323,7 @@ function render() {
     <div class="callb${p.call.seenAt ? ' seen' : ''}">
       <div>
         <div class="t">📣 의국 콜요청 — ${esc(displayName(p))}</div>
-        <div class="m">현재 <b>${esc(p.status)}</b> · 요청 <span class="tick" data-k="ago" data-t="${p.call.at || now}"></span> 전${p.call.seenAt ? ' · 알림 꺼짐' : ''}</div>
+        <div class="m">현재 <b>${esc(statusLabel(p))}</b> · 요청 <span class="tick" data-k="ago" data-t="${p.call.at || now}"></span> 전${p.call.seenAt ? ' · 알림 꺼짐' : ''}</div>
       </div>
       <div class="sp"></div>
       ${p.call.seenAt ? '' : `<button class="btn" data-act="seen" data-id="${p.id}">알림 끄기</button>`}
@@ -319,15 +338,16 @@ function render() {
   } else {
     $('list').innerHTML = list.map((p) => {
       const done = p.status === '귀가';
-      const cls = ['row', 'grid', p.id === selected ? 'sel' : '', p.call ? 'call' : '', done ? 'done' : ''].join(' ');
+      const wide = routeSteps(p).length > SETTINGS.wideRouteSteps;
+      const cls = ['row', 'grid', p.id === selected ? 'sel' : '', p.call ? 'call' : '', done ? 'done' : '', wide ? 'wide' : ''].join(' ');
       const tags = (p.call ? `<span class="tag call${p.call.seenAt ? ' seen' : ''}">📣 콜요청</span>` : '')
         + (!isToday(visitStart(p), now) ? '<span class="tag old">이전 날짜</span>' : '');
       const tl = logList(p).length ? `<div class="tl"><span class="lbl">동선</span>${routeHtml(p)}</div>` : '';
       return `<div class="${cls}" data-id="${p.id}">
         <div><div class="nm">${esc(displayName(p))}${tags}</div>${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}</div>
-        <div><span class="badge" style="${badgeStyle(p.status)}">${esc(p.status)}</span></div>
+        <div class="c-st"><span class="badge" style="${badgeStyle(p.status)}">${esc(statusLabel(p))}</span></div>
         <div class="c-el"><span class="el tick" data-k="el" data-id="${p.id}"></span></div>
-        <div class="c-ack"><span class="ack tick" data-k="ack" data-id="${p.id}"></span></div>
+        <div class="c-ack"><span class="ack tick" data-k="ack" data-id="${p.id}"></span>${alertOf(p) && !alertOf(p).ackAt ? `<button class="mini-ok" data-ack="${p.id}" title="의국 대신 확인(완료) 처리">✓ 완료</button>` : ''}</div>
         <div class="c-when when">${fmtClock(visitStart(p))}</div>
         ${tl}
       </div>`;
@@ -355,11 +375,12 @@ function tick() {
       el.innerHTML = `<div class="v">${esc(t.visit)}</div><div class="s">${esc(t.status)}</div>`;
       el.className = 'el tick ' + t.level;
     } else if (k === 'ack') {
-      if (isSilent(p)) { el.className = 'ack tick'; el.textContent = ''; }
-      else if (p.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(p.ackAt)}`; }
-      else if (p.holdAt) { el.className = 'ack tick hold'; el.textContent = `⏸ 의국 보류 ${fmtHM(p.holdAt)}`; }
+      const a = alertOf(p);
+      if (!a) { el.className = 'ack tick'; el.textContent = ''; }
+      else if (a.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(a.ackAt)}`; }
+      else if (a.holdAt) { el.className = 'ack tick hold'; el.textContent = `⏸ 의국 보류 ${fmtHM(a.holdAt)}`; }
       else {
-        const w = now - visitStart(p);
+        const w = now - (a.at || now);
         el.className = 'ack tick ' + (w >= SETTINGS.ackWarnSec * 1000 ? 'late' : 'wait');
         el.textContent = `확인 대기 ${fmtSec(w)}`;
       }
@@ -381,8 +402,9 @@ store.onPatients((data) => {
         newCall = true;
         desktopNotify('📣 의국 콜요청', `${displayName(p)} — 현재 ${p.status}`);
       }
-      if (o && !o.ackAt && p.ackAt) toast(`의국 확인 ✓ ${displayName(p)}`);
-      if (o && !o.holdAt && p.holdAt && !p.ackAt) toast(`의국 보류 ⏸ ${displayName(p)}`);
+      const a = alertOf(p), oa = o && alertOf(o);
+      if (a && oa && a.at === oa.at && !oa.ackAt && a.ackAt) toast(`✓ ${p.status} 확인 — ${displayName(p)}`);
+      if (a && oa && a.at === oa.at && !oa.holdAt && a.holdAt && !a.ackAt) toast(`⏸ 의국 보류 — ${displayName(p)}`);
     }
   }
   prev = patients;
