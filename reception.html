@@ -403,7 +403,7 @@ function tick() {
       el.className = 'el tick ' + t.level;
     } else if (k === 'ack') {
       const a = alertOf(p);
-      if (!a && p.status === '면회중' && p.alert && p.alert.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 면회시작 ${fmtHM(p.alert.ackAt)} · 보호자 안으로`; }
+      if (!a && p.status === '면회중' && p.alert && p.alert.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 면회시작 ${fmtHM(p.alert.ackAt)}`; }
       else if (!a) { el.className = 'ack tick'; el.textContent = ''; }
       else if (a.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(a.ackAt)}`; }
       else if (a.holdAt) { el.className = 'ack tick hold'; el.textContent = `⏸ 의국 보류 ${fmtHM(a.holdAt)}`; }
