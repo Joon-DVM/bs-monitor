@@ -339,7 +339,7 @@ export function parseFlowTime(s) {
 }
 export function parseCallMessage(msg) {
   const text = String(msg.text || '');
-  if (/^\s*(✅|\[BS모니터\])/.test(text) || msg.sender === 'BS모니터') return [];
+  if (/^\s*(✅|↪|\[BS모니터\])/.test(text) || msg.sender === 'BS모니터') return [];
   const out = [];
   let header = '', lastReq = null;
   text.split(/\r?\n/).forEach((raw) => {

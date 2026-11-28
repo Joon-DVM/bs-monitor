@@ -7,6 +7,24 @@ const STAFF_KEY = 'bsm.callStaff';
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 
+// 플로우에 올라가는 완료 메시지 (플로우는 답장 지정이 안 되어 첫 줄에 원글을 짚어 줌)
+//   ↪ 18:45 이승빈님 요청 (아이 상태 관련)
+//   ✅ 통화완료 – 이승빈(햇반) / 통화: 김형준 선생님
+//   문의사항 : *오늘 구토하였는데 …      ← 원글에 * 메모가 있을 때만
+//   통화메모: …                          ← 완료할 때 메모를 쓴 경우만
+export function completionText(c, who, memo) {
+  const title = /님$/.test(who) ? who : `${who} 선생님`;
+  const reason = (c.reason || '').trim();
+  const lines = [
+    `↪ ${fmtHM(c.at)} ${c.sender ? c.sender + '님 ' : ''}요청${reason ? ` (${reason})` : ''}`,
+    `✅ 통화완료 – ${c.owner}(${c.pet}) / 통화: ${title}`,
+  ];
+  const note = (c.note || '').trim();
+  if (note) lines.push(`문의사항 : ${note.split('\n').map((l) => '*' + l.trim()).join('\n')}`);
+  if (memo) lines.push(`통화메모: ${memo}`);
+  return lines.join('\n');
+}
+
 export function setupCalls({ store, mount }) {
   if (!mount) return;
   let calls = {}, first = true, formId = null, syncError = '', showDone = false;
@@ -160,7 +178,7 @@ export function setupCalls({ store, mount }) {
       const memo = mount.querySelector('.cc-memo').value.trim();
       if (!who) { toast('처리자를 선택해 주세요'); mount.querySelector('.cc-who').focus(); return; }
       lsSet(STAFF_KEY, who);
-      const text = `✅ 통화완료 – ${c.owner}(${c.pet})${c.doctor ? ' / ' + c.doctor : ''}\n처리: ${who}${memo ? '\n메모: ' + memo : ''}`;
+      const text = completionText(c, who, memo);
       b.disabled = true; b.textContent = '올리는 중…';
       try {
         if (store.mode === 'firebase') await api('/api/flow-complete', { method: 'POST', body: JSON.stringify({ text }) });
