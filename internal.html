@@ -227,7 +227,7 @@ function render() {
       <div class="pc-h"><div class="nm">${esc(displayName(p))}</div><span class="badge" style="${badgeStyle(p.status)}">${esc(statusLabel(p))}</span></div>
       <div class="meta"><span class="tick" data-k="el" data-id="${p.id}"></span></div>
       ${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}
-      ${steps ? `<div class="tl">${routeHtml(p)}</div>` : ''}
+      ${steps && !isSilent(p) ? `<div class="tl">${routeHtml(p)}</div>` : ''}
       ${held ? `<div class="heldst">⏸ ${esc(p.status)} 알림 보류 중 · ${fmtHM(alertOf(p).holdAt)}${alertOf(p).holdAuto ? ' (자동)' : ''}</div>` : ''}
       ${callLine}
       <div class="acts">

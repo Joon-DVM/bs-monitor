@@ -362,7 +362,7 @@ function render() {
       const cls = ['row', 'grid', p.id === selected ? 'sel' : '', p.call ? 'call' : '', done ? 'done' : '', wide ? 'wide' : ''].join(' ');
       const tags = (p.call ? `<span class="tag call${p.call.seenAt ? ' seen' : ''}">📣 콜요청</span>` : '')
         + (!isToday(visitStart(p), now) ? '<span class="tag old">이전 날짜</span>' : '');
-      const tl = logList(p).length ? `<div class="tl"><span class="lbl">동선</span>${routeHtml(p)}</div>` : '';
+      const tl = logList(p).length && !isSilent(p) ? `<div class="tl"><span class="lbl">동선</span>${routeHtml(p)}</div>` : '';
       return `<div class="${cls}" data-id="${p.id}">
         <div><div class="nm">${esc(displayName(p))}${tags}</div>${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}</div>
         <div class="c-st"><span class="badge" style="${badgeStyle(p.status)}">${esc(statusLabel(p))}</span></div>

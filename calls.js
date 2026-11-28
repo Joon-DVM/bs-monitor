@@ -16,7 +16,7 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const shortName = (n) => String(n || '').replace(/\s*(대표)?\s*(원장님|선생님|원장|쌤|님)\s*$/, '').trim();
 
 export function completionText(c, who, memo) {
-  const title = /님$/.test(who) ? who : `${who} 선생님`;
+  const title = shortName(who);  // 호칭 없이 이름만
   const reason = (c.reason || '').trim();
   const lines = [
     `↪ ${fmtHM(c.at)} ${c.sender ? c.sender + '님 ' : ''}요청${reason ? ` (${reason})` : ''}`,
