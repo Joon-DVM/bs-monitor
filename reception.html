@@ -217,7 +217,15 @@ $('statusBtns').addEventListener('click', (e) => {
 // 라운지/외출(아직 자리 비움) 외의 상태로 바뀌면 진행 중 콜요청은 완료로 처리
 const KEEP_CALL = ['라운지', '외출'];
 async function setStatus(id, s) {
-  const p = patients[id]; if (!p || p.status === s) return;
+  const p = patients[id]; if (!p) return;
+  // 진료대기중·면회대기중을 같은 상태에서 다시 누르면: 상태·기록은 그대로, 의국에 알림만 처음처럼 다시 보냄
+  if (p.status === s) {
+    if (WAIT_STATUSES.includes(s) && !isSilent(p)) {
+      await store.update(id, { alert: { at: NOW, status: s } });
+      toast(`${displayName(p)} — 의국에 ${s} 알림을 다시 보냈습니다`);
+    }
+    return;
+  }
   const f = { status: s, statusAt: NOW };
   if (p.call && !KEEP_CALL.includes(s)) f.call = null;
   // 귀가했던 보호자를 다시 원내 등으로 바꾸면 새 내원으로 보고 의국 알림을 다시 보냄
