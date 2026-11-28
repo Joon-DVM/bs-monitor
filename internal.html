@@ -81,6 +81,7 @@
 
   <div id="err"></div>
   <div id="arrive"></div>
+  <div id="phoneCalls"></div>
   <div id="summary" class="summary"></div>
   <div id="cards" class="cards"></div>
 </div>
@@ -96,6 +97,7 @@ import {
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, routeSteps, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
+import { setupCalls } from './calls.js';
 
 const $ = (id) => document.getElementById(id);
 const TITLE = 'BS 보호자 모니터 (의국)';
@@ -115,6 +117,8 @@ if (store.auth) {
   $('btnLogout').hidden = false;
   $('btnLogout').onclick = () => store.auth.signOut().then(() => location.reload());
 }
+
+setupCalls({ store, mount: $('phoneCalls') });
 
 store.onConnection((ok) => {
   const c = $('conn');

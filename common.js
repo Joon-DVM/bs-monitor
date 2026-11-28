@@ -96,7 +96,11 @@ function createLocalStore() {
     try { const s = JSON.parse(e.newValue); if (s.ts > state.ts) { state = s; emit(); } } catch {}
   });
   function persist() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
-  function emit() { const p = clone(state.patients); listeners.forEach((f) => f(p)); }
+  const callListeners = new Set();
+  function emit() {
+    const p = clone(state.patients); listeners.forEach((f) => f(p));
+    const c = clone(state.calls || {}); callListeners.forEach((f) => f(c));
+  }
   function commit() { state.ts = Date.now(); persist(); send({ type: 'state', state }); emit(); }
   setTimeout(() => send({ type: 'hello' }), 30);
 
@@ -123,6 +127,11 @@ function createLocalStore() {
     async remove(id) { delete state.patients[id]; commit(); },
     async restore(id, p) { state.patients[id] = p; commit(); },
     async ping() { return 0; },
+    // 통화 요청 (플로우 연동)
+    onCalls(cb) { callListeners.add(cb); cb(clone(state.calls || {})); },
+    async ensureCall(id, obj) { state.calls = state.calls || {}; if (state.calls[id]) return; state.calls[id] = resolveNow(obj, Date.now()); commit(); },
+    async updateCall(id, fields) { const c = (state.calls || {})[id]; if (!c) return; const t = Date.now(); for (const k in fields) setPath(c, k, resolveNow(fields[k], t)); commit(); },
+    async tryLease() { return false; },
     auth: null,
   };
 }
@@ -145,7 +154,7 @@ async function createFirebaseStore() {
   provider.setCustomParameters({ prompt: 'select_account' });
   // 다른 페이지로 이동해서 로그인하고 돌아온 경우 결과 처리
   const redirectError = fau.getRedirectResult(auth).then(() => null, (e) => e);
-  const { ref, onValue, push, set, update, remove, serverTimestamp } = fd;
+  const { ref, onValue, push, set, update, remove, serverTimestamp, runTransaction } = fd;
   const ROOT = 'bsm/patients';
   let offset = 0;
   onValue(ref(db, '.info/serverTimeOffset'), (s) => { offset = s.val() || 0; });
@@ -173,6 +182,26 @@ async function createFirebaseStore() {
     },
     async remove(id) { await remove(ref(db, `${ROOT}/${id}`)); },
     async restore(id, p) { await set(ref(db, `${ROOT}/${id}`), p); },
+    // 통화 요청 (플로우 연동)
+    onCalls(cb) { return onValue(ref(db, 'bsm/calls'), (s) => cb(s.val() || {})); },
+    async ensureCall(id, obj) {
+      const ts = serverTimestamp();
+      await runTransaction(ref(db, `bsm/calls/${id}`), (cur) => (cur === null ? resolveNow(obj, ts) : undefined));
+    },
+    async updateCall(id, fields) {
+      const ts = serverTimestamp(); const u = {};
+      for (const k in fields) u[`bsm/calls/${id}/${k}`] = resolveNow(fields[k], ts) ?? null;
+      await update(ref(db), u);
+    },
+    // 여러 PC 중 한 대만 일정 간격으로 작업하도록 (성공하면 true)
+    async tryLease(name, ms) {
+      const r = await runTransaction(ref(db, `bsm/lease/${name}`), (cur) => {
+        const now = Date.now() + offset;
+        if (cur && now - cur < ms) return undefined;
+        return now;
+      });
+      return r.committed;
+    },
     async ping() {
       const t = performance.now();
       await set(ref(db, 'bsm/ping'), serverTimestamp());
@@ -192,6 +221,7 @@ async function createFirebaseStore() {
         }
       },
       signInRedirect: () => fau.signInWithRedirect(auth, provider),
+      idToken: () => (auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null)),
       signOut: () => fau.signOut(auth),
     },
   };
@@ -281,6 +311,39 @@ export function fmtSec(ms) {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+// ── 플로우 통화요청 메시지 해석 ──
+// 형식: [입원/]보호자(고양이[/전화번호]) - 용건 [/ 담당 선생님]   (+ 다음 줄 '*메모')
+// '<오늘 통화요청건>' 아래 줄은 남은 건 정리 목록이라 제외, '<내일 …>' 아래 줄은 '내일' 요청으로 표시
+const CALL_RE = /^(입원\s*\/\s*)?([^()\/]+?)\s*\(\s*([^)\/]+?)\s*(?:\/\s*([^)]*?))?\s*\)\s*[-–]\s*(.+)$/;
+export function parseFlowTime(s) {
+  const m = String(s || '').match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : (Date.parse(s) || 0);
+}
+export function parseCallMessage(msg) {
+  const text = String(msg.text || '');
+  if (/^\s*(✅|\[BS모니터\])/.test(text) || msg.sender === 'BS모니터') return [];
+  const out = [];
+  let header = '', lastReq = null;
+  text.split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (!line) return;
+    const h = line.match(/^<\s*(.+?)\s*>$/);
+    if (h) { header = h[1]; lastReq = null; return; }
+    if (line.startsWith('*')) { if (lastReq) lastReq.note = (lastReq.note ? lastReq.note + '\n' : '') + line.replace(/^\*\s*/, ''); return; }
+    const m = line.match(CALL_RE);
+    if (!m || /오늘/.test(header)) { lastReq = null; return; }
+    let rest = m[5].trim(), doctor = '';
+    const k = rest.lastIndexOf('/');
+    if (k >= 0) { doctor = rest.slice(k + 1).trim(); rest = rest.slice(0, k).trim(); }
+    lastReq = {
+      owner: m[2].trim(), pet: m[3].trim(), phone: (m[4] || '').trim(), reason: rest, doctor,
+      inpatient: !!m[1], tomorrow: /내일/.test(header), note: '',
+    };
+    out.push(lastReq);
+  });
+  return out.map((r, i) => ({ ...r, id: msg.id + (i ? '_' + i : ''), msgId: msg.id, sender: msg.sender || '', at: parseFlowTime(msg.at) }));
+}
+
 // 조용한 내원 (config.js silentNames): 알림·경과 시간 표시 안 함
 export function isSilent(p) {
   if (!p) return false;
@@ -361,7 +424,7 @@ export function badgeStyle(s) {
 export function setupRefresh(btn) {
   if (!btn) return;
   btn.onclick = () => location.reload();
-  const files = [location.pathname, '/common.js', '/config.js', '/style.css'];
+  const files = [location.pathname, '/common.js', '/config.js', '/style.css', '/calls.js'];
   const snap = async () => {
     try {
       const texts = await Promise.all(files.map((f) => fetch(f, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''))));

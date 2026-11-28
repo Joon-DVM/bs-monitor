@@ -104,6 +104,7 @@
 
   <div id="err"></div>
   <div id="callBanner"></div>
+  <div id="phoneCalls"></div>
 
   <div class="card">
     <div class="add-row">
@@ -144,6 +145,7 @@ import {
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
+import { setupCalls } from './calls.js';
 
 const $ = (id) => document.getElementById(id);
 const TITLE = 'BS 보호자 모니터 (리셉션)';
@@ -167,6 +169,9 @@ if (store.auth) {
   $('btnLogout').hidden = false;
   $('btnLogout').onclick = () => store.auth.signOut().then(() => location.reload());
 }
+
+// ── 플로우 통화 요청 ─────────────────────────
+setupCalls({ store, mount: $('phoneCalls') });
 
 // ── 연결 상태 ───────────────────────────────
 store.onConnection((ok) => {

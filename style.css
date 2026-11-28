@@ -65,3 +65,34 @@ body { background: var(--bg); color: var(--text); }
 @keyframes pulseA { 0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,.6); } 50% { box-shadow: 0 0 0 6px rgba(245,158,11,0); } }
 @keyframes blink { 50% { opacity: .45; } }
 [hidden] { display: none !important; }
+
+/* ── 플로우 통화 요청 패널 (리셉션·의국 공용) ── */
+.calls { background: var(--card); border: 1px solid var(--line); border-left: 5px solid #0ea5e9; border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; }
+.calls-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.calls-h b { font-size: 16px; }
+.calls-n { background: #0ea5e9; color: #fff; font-weight: 800; border-radius: 999px; padding: 1px 10px; font-size: 13px; }
+.calls-err { color: #dc2626; font-size: 13px; font-weight: 700; max-width: 60ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calls-tg { padding: 5px 10px; font-size: 13px; }
+.cc-sp { flex: 1; }
+.calls-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; align-items: start; }
+.calls-empty { color: var(--muted); font-size: 14px; padding: 4px 2px; }
+.call-card { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.call-card.editing { border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14,165,233,.18); }
+.cc-h { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cc-nm { font-size: 17px; font-weight: 900; letter-spacing: -.3px; }
+.cc-doc { font-size: 13px; font-weight: 800; background: #e0f2fe; color: #075985; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+.ct { font-size: 12px; font-weight: 800; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+.ct-in { background: #fee2e2; color: #991b1b; }
+.ct-tm { background: #fef3c7; color: #92400e; }
+.cc-r { font-size: 14px; font-weight: 700; }
+.cc-ph { font-weight: 600; color: var(--muted); user-select: all; }
+.cc-note { font-size: 13px; color: var(--muted); white-space: pre-wrap; }
+.cc-m { font-size: 12px; color: var(--muted); }
+.cc-acts, .cc-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.cc-acts .btn, .cc-row .btn { padding: 7px 12px; font-size: 14px; }
+.cc-form .inp { height: 38px; font-size: 14px; border: 1.5px solid var(--btn-line); border-radius: 9px; padding: 0 10px; background: var(--bg); color: var(--text); flex: 1; min-width: 0; }
+.cc-form select.inp { flex: 0 1 220px; }
+.calls-done { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+body.dark .cc-doc { background: #0c4a6e; color: #e0f2fe; }
+body.dark .ct-in { background: #7f1d1d; color: #fee2e2; }
+body.dark .ct-tm { background: #78350f; color: #fef3c7; }
