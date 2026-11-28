@@ -48,8 +48,9 @@
   .el .s { font-size: 13px; color: #475569; font-weight: 700; }
   .lhead { padding: 12px 18px; border: 1px solid var(--line); border-radius: 12px; background: #f7f9fc; font-weight: 800; font-size: 14px; color: #334155; }
   /* 보호자 카드: 창 너비에 따라 좌우로 배치 (의국 화면과 같은 방식) */
-  .rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px; margin-top: 4px; align-items: stretch; }
-  .row.pinned { grid-column: 1 / -1; }
+  /* auto-fit: 남는 가로 공간을 카드들이 똑같이 나눔 / 최소 너비는 귀가 시간 칩이 한 줄 되는 너비(--cardmin, JS) / 모든 카드 높이 같음 */
+  .rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--cardmin, 360px), 100%), 1fr)); grid-auto-rows: 1fr; gap: 10px; margin-top: 10px; align-items: stretch; }
+  .pinwrap { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
   .row.meeting { border: 3px solid #ef4444; padding: 10.5px 16.5px; animation: meetBlink 1s infinite; }
   @keyframes meetBlink { 0%,100% { border-color: #ef4444; box-shadow: 0 0 0 0 rgba(239,68,68,.5); } 50% { border-color: rgba(239,68,68,.25); box-shadow: 0 0 12px 2px rgba(239,68,68,.3); } }
   .rows .empty { grid-column: 1 / -1; }
@@ -142,7 +143,7 @@
     <div class="lhead grid">
       <div>이름</div><div>상태</div><div class="c-el">경과 시간</div><div class="c-ack">의국 확인</div><div class="c-when" style="text-align:right">내원 시각</div>
     </div>
-    <div id="list" class="rows"></div>
+    <div id="list"></div>
     <div class="listfoot">
       <span id="count"></span>
       <span><button id="btnShowDone" class="btn">귀가 보기</button></span>
@@ -158,7 +159,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup, ackAlert, ackLabel, silentFirst, visitStatsHtml,
+  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup, ackAlert, ackLabel, silentFirst, gridHtml, fitCards, visitStatsHtml,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -362,7 +363,7 @@ function render() {
   if (!list.length) {
     $('list').innerHTML = `<div class="empty">아직 내원한 환자가 없습니다. 위에서 환자를 추가하세요.</div>`;
   } else {
-    $('list').innerHTML = list.map((p) => {
+    const rowHtml = (p) => {
       const done = p.status === '귀가';
       const cls = ['row', 'grid', p.id === selected ? 'sel' : '', p.call ? 'call' : '', done ? 'done' : '', p.status === '면회중' ? 'meeting' : '', isSilent(p) ? 'pinned' : ''].join(' ');
       const tags = (p.call ? `<span class="tag call${p.call.seenAt ? ' seen' : ''}">📣 콜요청</span>` : '')
@@ -376,7 +377,8 @@ function render() {
         <div class="c-when when">${fmtClock(visitStart(p))}</div>
         ${tl}
       </div>`;
-    }).join('');
+    };
+    $('list').innerHTML = gridHtml(list, rowHtml, 'rows');
   }
   const allP = Object.values(patients);
   const active = allP.filter((p) => p.status !== '귀가').length;
@@ -390,6 +392,7 @@ function render() {
 // 시간 표시만 매초 갱신 (목록 전체를 다시 그리지 않음)
 function tick() {
   const now = store.now();
+  queueMicrotask(() => fitCards(document.querySelector('#list .rows'), 360));
   document.querySelectorAll('.tick').forEach((el) => {
     const k = el.dataset.k;
     if (k === 'ago') { el.textContent = fmtElapsed(now - Number(el.dataset.t)); return; }

@@ -568,6 +568,30 @@ export function visitStatsHtml(p) {
 }
 const dateKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
+// ── 카드 격자 ───────────────────────────────
+// 원장님 카드는 격자 밖 맨 위에 한 줄 전체, 나머지는 같은 너비·같은 높이의 격자
+export function gridHtml(list, cardHtml, gridClass) {
+  const pinned = list.filter(isSilent), rest = list.filter((p) => !isSilent(p));
+  return (pinned.length ? `<div class="pinwrap">${pinned.map(cardHtml).join('')}</div>` : '')
+    + (rest.length ? `<div class="${gridClass}">${rest.map(cardHtml).join('')}</div>` : '');
+}
+// 카드 최소 너비 = 귀가 시간 칩이 한 줄에 다 들어가는 너비 (없으면 기본값).
+// 격자는 auto-fit 이라 남는 가로 공간은 카드들이 똑같이 나눠 가짐.
+export function fitCards(grid, base) {
+  if (!grid) return;
+  let need = base;
+  grid.querySelectorAll('.vstats').forEach((v) => {
+    const chips = v.querySelectorAll('.vchip'); if (!chips.length) return;
+    let w = 0; chips.forEach((c) => { w += c.getBoundingClientRect().width; });
+    w += 6 * (chips.length - 1);
+    const card = v.closest('.row, .pc');
+    if (card) { const cs = getComputedStyle(card); w += ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((s, k) => s + (parseFloat(cs[k]) || 0), 0); }
+    need = Math.max(need, Math.ceil(w + 6));
+  });
+  const val = need + 'px';
+  if (grid.style.getPropertyValue('--cardmin') !== val) grid.style.setProperty('--cardmin', val);
+}
+
 // ── 매일 자정 정리 ─────────────────────────
 // 어제 이전에 귀가한 환자 기록, 어제 이전에 완료한 통화 요청을 지움.
 // 자정에 켜진 PC가 없으면 다음에 처음 켜지는 PC가 정리. (진행 중인 통화 요청·원내 환자는 그대로)
