@@ -28,6 +28,10 @@ export function completionText(c, who, memo) {
   return lines.join('\n');
 }
 
+// 통화요청 인식 방식을 고치면 이 번호를 올림 → 새로고침 안 한 예전 화면이 확인 담당을 차지해도
+// 새 화면이 따로 확인함 (예전 화면은 예전 방식대로 계속 확인, 같은 요청은 한 번만 저장됨)
+const FLOW_LEASE = 'flowSync_p2';
+
 export function setupCalls({ store, mount }) {
   if (!mount) return;
   let calls = {}, first = true, formId = null, syncError = '', showDone = false;
@@ -46,7 +50,7 @@ export function setupCalls({ store, mount }) {
   async function sync(force = false) {
     if (store.mode !== 'firebase') return;
     try {
-      if (!force && !(await store.tryLease('flowSync', (SETTINGS.flowPollSec || 30) * 1000 - 2000))) return;
+      if (!force && !(await store.tryLease(FLOW_LEASE, (SETTINGS.flowPollSec || 30) * 1000 - 2000))) return;
       const { messages } = await api('/api/flow-messages');
       for (const msg of messages) {
         for (const req of parseCallMessage(msg)) {
