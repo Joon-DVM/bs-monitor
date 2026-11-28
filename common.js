@@ -446,6 +446,9 @@ export function alertOf(p) {
 }
 // 대기 알림 확인(완료): 면회대기중이면 상태를 '면회중'으로 바꾸고 기록에 남김 (면회 시간은 이때부터 계산)
 export const MEET_STATUS = '면회중';
+export const ackLabel = (p) => (alertOf(p)?.status === '면회대기중' ? '✓ 면회시작 · 보호자 안으로' : '✓ 완료');
+// 원장님(특수 대상)은 맨 위 한 줄 전체, 그다음 다른 환자
+export const silentFirst = (a, b) => isSilent(b) - isSilent(a);
 export function ackAlert(store, id, p) {
   const a = alertOf(p); if (!a || a.ackAt) return;
   if (p.status === '면회대기중') return store.update(id, { 'alert/ackAt': NOW, status: MEET_STATUS, statusAt: NOW }, MEET_STATUS);
@@ -498,7 +501,8 @@ export const FIRST_ROOM_LABEL = '진료/검사';
 export const AFTER_MEET_ROOM_LABEL = '면회 후 상담';
 export const PAST_MEET_LABEL = '면회';
 const isMeet = (s) => s === '면회대기중' || s === MEET_STATUS;
-const hadMeetBefore = (logs, i) => logs.slice(0, i).some((l) => isMeet(l.s));
+// 실제 면회는 의국 확인으로 '면회중'이 된 경우만 (면회대기중만 있고 확인 없이 넘어가면 면회 안 한 것으로 봄)
+const hadMeetBefore = (logs, i) => logs.slice(0, i).some((l) => l.s === MEET_STATUS);
 export const LATER_ROOM_LABEL = '검사후 상담';
 
 // ── 귀가한 방문의 시간 분석 ─────────────────
@@ -513,18 +517,15 @@ export function visitStats(p) {
   let care = 0, rooms = 0, firstRoom = null, lastRoomEnd = null, meet = 0, meets = 0, firstMeet = null, inMeet = false;
   logs.forEach((l, i) => {
     // 면회: 면회대기중이 된 순간부터 다른 상태로 바뀔 때까지 (연달아 있으면 한 번으로)
-    // 면회: 의국 확인으로 '면회중'이 된 순간부터 다른 상태로 바뀔 때까지.
-    // (확인 없이 바로 다른 상태로 간 면회대기중은 면회대기중 시각부터)
-    if (isMeet(l.s)) {
+    // 면회: 의국에서 [면회시작]을 눌러 '면회중'이 된 순간부터 다른 상태로 바뀔 때까지 (면회중이 없으면 면회 안 한 것)
+    if (l.s === MEET_STATUS) {
       if (!inMeet) { meets++; inMeet = true; }  // 연달아 이어진 면회는 한 번으로
-      const next = logs[i + 1];
-      if (l.s === '면회대기중' && next && next.s === MEET_STATUS) return;  // 곧 면회중으로 이어짐
-      const segEnd = next ? next.at : end;
+      const segEnd = logs[i + 1] ? logs[i + 1].at : end;
       meet += Math.max(0, segEnd - l.at);
       if (firstMeet == null) firstMeet = l.at;
       return;
     }
-    inMeet = false;
+    if (l.s !== '면회대기중') inMeet = false;  // 면회 중 다시 누른 면회대기중은 같은 면회로
     if (STATUS[l.s]?.group !== 'room') return;
     const segEnd = logs[i + 1] ? logs[i + 1].at : end;
     rooms++;

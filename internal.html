@@ -32,9 +32,9 @@
   .arrive-item .cd { color: #fde68a; font-weight: 800; }
 
   /* 카드 */
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); grid-auto-flow: row dense; gap: 14px; align-items: start; }
-  .pc.wide { grid-column: span 2; }
-  @media (max-width: 700px) { .pc.wide { grid-column: auto; } }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: stretch; }
+  .pc.pinned { grid-column: 1 / -1; }
+  .pc.meeting { border: 3px solid #ef4444; animation: heldBlink 1s infinite; }
   .pc { background: var(--card); border: 1.5px solid var(--line); border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
   .pc.unack { border: 2px solid #ef4444; animation: pulse 1.3s infinite; }
   .pc.held { border: 3px solid #ef4444; animation: heldBlink 1s infinite; }
@@ -97,7 +97,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup, ackAlert, visitStatsHtml,
+  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup, ackAlert, ackLabel, silentFirst, visitStatsHtml,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, routeSteps, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -183,6 +183,7 @@ function sorted() {
   return Object.entries(patients).map(([id, p]) => ({ id, ...p }))
     .filter((p) => showDone || p.status !== '귀가')
     .sort((a, b) =>
+      silentFirst(a, b) ||
       (isPending(b) - isPending(a)) ||
       (isHeld(b) - isHeld(a)) ||
       (!!b.call - !!a.call) ||
@@ -202,7 +203,7 @@ function render() {
       <div class="arrive-list">${unacked.map((p) => `
         <div class="arrive-item"><div><div class="nm">${esc(displayName(p))}</div>
           <div class="m"><b>${esc(p.status)}</b> ${fmtHM(alertOf(p).at)} · <span class="cd tick" data-k="cd" data-id="${p.id}"></span>${p.memo ? ' · 📝 ' + esc(p.memo) : ''}</div></div>
-          <div class="sp"></div><button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">✓ 완료</button></div>`).join('')}
+          <div class="sp"></div><button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">${ackLabel(p)}</button></div>`).join('')}
       </div>
     </div>` : '';
 
@@ -222,7 +223,7 @@ function render() {
   $('cards').innerHTML = list.length ? list.map((p) => {
     const un = isPending(p), held = isHeld(p);
     const steps = routeSteps(p).length;
-    const cls = ['pc', un ? 'unack' : '', held ? 'held' : '', p.call ? 'call' : '', p.status === '귀가' ? 'done' : '', steps > SETTINGS.wideRouteSteps ? 'wide' : ''].join(' ');
+    const cls = ['pc', un ? 'unack' : '', held ? 'held' : '', p.call ? 'call' : '', p.status === '귀가' ? 'done' : '', p.status === '면회중' ? 'meeting' : '', isSilent(p) ? 'pinned' : ''].join(' ');
     const callLine = p.call
       ? `<div class="callst">📣 콜요청 중 · <span class="tick" data-k="ago" data-t="${p.call.at || now}"></span> 전 · ${p.call.seenAt ? '<span class="ok">리셉션 확인 ✓</span>' : '리셉션 알림 중…'}</div>`
       : '';
@@ -234,8 +235,8 @@ function render() {
       ${held ? `<div class="heldst">⏸ ${esc(p.status)} 알림 보류 중 · ${fmtHM(alertOf(p).holdAt)}${alertOf(p).holdAuto ? ' (자동)' : ''}</div>` : ''}
       ${callLine}
       <div class="acts">
-        ${un ? `<button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">✓ 완료</button>` : ''}
-        ${held ? `<button class="btn ack" data-act="ack" data-id="${p.id}">✓ 완료</button>` : ''}
+        ${un ? `<button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">${ackLabel(p)}</button>` : ''}
+        ${held ? `<button class="btn ack" data-act="ack" data-id="${p.id}">${ackLabel(p)}</button>` : ''}
         <button class="btn callreq" data-act="call" data-id="${p.id}" ${p.call ? 'disabled' : ''}>📣 콜요청하기</button>
         <button class="btn" data-act="uncall" data-id="${p.id}" ${p.call ? '' : 'disabled'}>콜요청취소</button>
       </div>

@@ -48,16 +48,17 @@
   .el .s { font-size: 13px; color: #475569; font-weight: 700; }
   .lhead { padding: 12px 18px; border: 1px solid var(--line); border-radius: 12px; background: #f7f9fc; font-weight: 800; font-size: 14px; color: #334155; }
   /* 보호자 카드: 창 너비에 따라 좌우로 배치 (의국 화면과 같은 방식) */
-  .rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); grid-auto-flow: row dense; gap: 10px; margin-top: 4px; align-items: start; }
+  .rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px; margin-top: 4px; align-items: stretch; }
+  .row.pinned { grid-column: 1 / -1; }
+  .row.meeting { border: 3px solid #ef4444; padding: 10.5px 16.5px; animation: meetBlink 1s infinite; }
+  @keyframes meetBlink { 0%,100% { border-color: #ef4444; box-shadow: 0 0 0 0 rgba(239,68,68,.5); } 50% { border-color: rgba(239,68,68,.25); box-shadow: 0 0 12px 2px rgba(239,68,68,.3); } }
   .rows .empty { grid-column: 1 / -1; }
   .row.grid { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; column-gap: 10px; align-items: start; }
-  .row.wide { grid-column: span 2; }
   .row .c-st { justify-self: end; }
   .row .c-ack { justify-self: end; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   .row .c-when, .lhead { display: none; }
   .mini-ok { border: 0; border-radius: 8px; background: #16a34a; color: #fff; font-weight: 800; font-size: 13px; padding: 5px 10px; }
   .mini-ok:hover { filter: brightness(1.08); }
-  @media (max-width: 800px) { .row.wide { grid-column: auto; } }
   .row { padding: 12px 18px; border: 1.5px solid var(--line); border-radius: 14px; background: #fff; cursor: pointer; transition: border-color .12s; }
   .row:hover { border-color: #b8c4d6; }
   .row.sel { border: 3px solid var(--sel); padding: 10.5px 16.5px; }
@@ -157,7 +158,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup, ackAlert, visitStatsHtml,
+  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup, ackAlert, ackLabel, silentFirst, visitStatsHtml,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -320,7 +321,7 @@ $('callBanner').addEventListener('click', async (e) => {
 function sorted() {
   return Object.entries(patients).map(([id, p]) => ({ id, ...p }))
     .filter((p) => showDone || p.status !== '귀가')
-    .sort((a, b) => ((a.status === '귀가') - (b.status === '귀가')) || (visitStart(a) - visitStart(b)));
+    .sort((a, b) => silentFirst(a, b) || ((a.status === '귀가') - (b.status === '귀가')) || (visitStart(a) - visitStart(b)));
 }
 
 function render() {
@@ -363,8 +364,7 @@ function render() {
   } else {
     $('list').innerHTML = list.map((p) => {
       const done = p.status === '귀가';
-      const wide = routeSteps(p).length > SETTINGS.wideRouteSteps;
-      const cls = ['row', 'grid', p.id === selected ? 'sel' : '', p.call ? 'call' : '', done ? 'done' : '', wide ? 'wide' : ''].join(' ');
+      const cls = ['row', 'grid', p.id === selected ? 'sel' : '', p.call ? 'call' : '', done ? 'done' : '', p.status === '면회중' ? 'meeting' : '', isSilent(p) ? 'pinned' : ''].join(' ');
       const tags = (p.call ? `<span class="tag call${p.call.seenAt ? ' seen' : ''}">📣 콜요청</span>` : '')
         + (!isToday(visitStart(p), now) ? '<span class="tag old">이전 날짜</span>' : '');
       const tl = logList(p).length && !isSilent(p) ? `<div class="tl"><span class="lbl">동선</span>${routeHtml(p)}</div>` : '';
@@ -372,7 +372,7 @@ function render() {
         <div><div class="nm">${esc(displayName(p))}${tags}</div>${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}</div>
         <div class="c-st"><span class="badge" style="${badgeStyle(p.status)}">${esc(statusLabel(p))}</span></div>
         <div class="c-el"><span class="el tick" data-k="el" data-id="${p.id}"></span></div>
-        <div class="c-ack"><span class="ack tick" data-k="ack" data-id="${p.id}"></span>${alertOf(p) && !alertOf(p).ackAt ? `<button class="mini-ok" data-ack="${p.id}" title="의국 대신 확인(완료) 처리">✓ 완료</button>` : ''}</div>
+        <div class="c-ack"><span class="ack tick" data-k="ack" data-id="${p.id}"></span>${alertOf(p) && !alertOf(p).ackAt ? `<button class="mini-ok" data-ack="${p.id}" title="의국 대신 확인(완료) 처리">${ackLabel(p)}</button>` : ''}</div>
         <div class="c-when when">${fmtClock(visitStart(p))}</div>
         ${tl}
       </div>`;
@@ -403,7 +403,7 @@ function tick() {
       el.className = 'el tick ' + t.level;
     } else if (k === 'ack') {
       const a = alertOf(p);
-      if (!a && p.status === '면회중' && p.alert && p.alert.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(p.alert.ackAt)}`; }
+      if (!a && p.status === '면회중' && p.alert && p.alert.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 면회시작 ${fmtHM(p.alert.ackAt)} · 보호자 안으로`; }
       else if (!a) { el.className = 'ack tick'; el.textContent = ''; }
       else if (a.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(a.ackAt)}`; }
       else if (a.holdAt) { el.className = 'ack tick hold'; el.textContent = `⏸ 의국 보류 ${fmtHM(a.holdAt)}`; }
@@ -432,7 +432,7 @@ store.onPatients((data) => {
       }
       const a = alertOf(p), oa = o && alertOf(o);
       if (a && oa && a.at === oa.at && !oa.ackAt && a.ackAt) toast(`✓ ${p.status} 확인 — ${displayName(p)}`);
-      if (oa && !oa.ackAt && p.status === '면회중' && o.status === '면회대기중') toast(`✓ 면회 확인 — ${displayName(p)} 면회중`);
+      if (oa && !oa.ackAt && p.status === '면회중' && o.status === '면회대기중') toast(`✓ 면회시작 — ${displayName(p)} 보호자 안으로 안내해 주세요`);
       if (a && oa && a.at === oa.at && !oa.holdAt && a.holdAt && !a.ackAt) toast(`⏸ 의국 보류 — ${displayName(p)}`);
     }
   }
