@@ -144,6 +144,13 @@ function createLocalStore() {
     async ensureCall(id, obj) { state.calls = state.calls || {}; if (state.calls[id]) return; state.calls[id] = resolveNow(obj, Date.now()); commit(); },
     async updateCall(id, fields) { const c = (state.calls || {})[id]; if (!c) return; const t = Date.now(); for (const k in fields) setPath(c, k, resolveNow(fields[k], t)); commit(); },
     async tryLease() { return false; },
+    // 여러 건을 한 번에: { patients: {id: null}, calls: {id: 값 또는 null} }
+    async bulk({ patients = {}, calls = {} }) {
+      for (const id in patients) if (patients[id] === null) delete state.patients[id];
+      state.calls = state.calls || {};
+      for (const id in calls) { if (calls[id] === null) delete state.calls[id]; else state.calls[id] = calls[id]; }
+      commit();
+    },
     auth: null,
   };
 }
@@ -204,6 +211,12 @@ async function createFirebaseStore() {
       const ts = serverTimestamp(); const u = {};
       for (const k in fields) u[`bsm/calls/${id}/${k}`] = resolveNow(fields[k], ts) ?? null;
       await update(ref(db), u);
+    },
+    async bulk({ patients = {}, calls = {} }) {
+      const u = {};
+      for (const id in patients) u[`${ROOT}/${id}`] = patients[id];
+      for (const id in calls) u[`bsm/calls/${id}`] = calls[id];
+      if (Object.keys(u).length) await update(ref(db), u);
     },
     // 여러 PC 중 한 대만 일정 간격으로 작업하도록 (성공하면 true)
     async tryLease(name, ms) {
@@ -452,6 +465,43 @@ export function routeSteps(p) {
   });
   return out;
 }
+// ── 매일 자정 정리 ─────────────────────────
+// 어제 이전에 귀가한 환자 기록, 어제 이전에 완료한 통화 요청을 지움.
+// 자정에 켜진 PC가 없으면 다음에 처음 켜지는 PC가 정리. (진행 중인 통화 요청·원내 환자는 그대로)
+// 통화 요청은 플로우에서 다시 읽어 와 되살아나지 않도록 {gone, at} 표시만 남기고, 7일 뒤 완전히 삭제.
+export const SHOW_DONE_MS = 60 * 1000;
+export function todayStart(now) { const d = new Date(now); d.setHours(0, 0, 0, 0); return d.getTime(); }
+export function cleanupPlan(patients, calls, now) {
+  const start = todayStart(now), WEEK = 7 * 86400000;
+  const plan = { patients: {}, calls: {} };
+  for (const [id, p] of Object.entries(patients || {})) {
+    if (p && p.status === '귀가' && (p.statusAt || 0) < start) plan.patients[id] = null;
+  }
+  for (const [id, c] of Object.entries(calls || {})) {
+    if (!c) continue;
+    if (c.gone) { if ((c.at || 0) < start - WEEK) plan.calls[id] = null; continue; }
+    if (c.status !== 'open' && (c.doneAt || 0) < start) plan.calls[id] = { gone: true, at: c.at || c.doneAt || now };
+  }
+  return plan;
+}
+export function startDailyCleanup(store) {
+  let patients = null, calls = null, busy = false;
+  store.onPatients((v) => { patients = v; });
+  store.onCalls((v) => { calls = v; });
+  const run = async () => {
+    if (busy || !patients || !calls) return;
+    const plan = cleanupPlan(patients, calls, store.now());
+    if (!Object.keys(plan.patients).length && !Object.keys(plan.calls).length) return;
+    busy = true;
+    try {
+      if (store.mode === 'firebase' && !(await store.tryLease('dailyCleanup', 50000))) return;
+      await store.bulk(plan);
+    } catch (e) { console.warn('cleanup', e); } finally { busy = false; }
+  };
+  setTimeout(run, 5000);
+  setInterval(run, 60000);
+}
+
 export function routeHtml(p) {
   // 오늘이 아닌 기록은 날짜도 함께 표시 (예: 11/27 21:06)
   const today = new Date().toDateString();

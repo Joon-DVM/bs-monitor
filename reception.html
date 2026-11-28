@@ -152,7 +152,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING,
+  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -183,6 +183,7 @@ if (store.auth) {
 
 // ── 플로우 통화 요청 ─────────────────────────
 setupCalls({ store, mount: $('phoneCalls') });
+startDailyCleanup(store);
 
 // ── 연결 상태 ───────────────────────────────
 store.onConnection((ok) => {
@@ -233,15 +234,22 @@ async function setStatus(id, s) {
   f.alert = WAIT_STATUSES.includes(s) ? { at: NOW, status: s } : null;
   const prevStatus = p.status;
   await store.update(id, f, s);
-  if (s === '귀가' && !showDone) {
+  if (s === '귀가') {
+    setShowDone(false);
     if (selected === id) select(null);
     toast(`${displayName(p)} 귀가 — 목록에서 숨김`, { ms: 7000, action: { label: '되돌리기', run: () => store.update(id, { status: prevStatus, statusAt: NOW }, { s: prevStatus, undo: true }) } });
   }
 }
 
 // ── 귀가 환자 표시/숨김 ─────────────────────
-let showDone = (() => { try { return localStorage.getItem('bsm.rShowDone') === '1'; } catch { return false; } })();
-$('btnShowDone').onclick = () => { showDone = !showDone; try { localStorage.setItem('bsm.rShowDone', showDone ? '1' : '0'); } catch {} render(); };
+// 귀가 환자는 항상 숨김이 기본. '귀가 보기'는 잠깐 확인용으로 1분 뒤 자동으로 다시 숨김 (PC에 기억하지 않음)
+let showDone = false, showDoneTimer = null;
+function setShowDone(v) {
+  showDone = v; clearTimeout(showDoneTimer);
+  if (v) showDoneTimer = setTimeout(() => setShowDone(false), SHOW_DONE_MS);
+  render();
+}
+$('btnShowDone').onclick = () => setShowDone(!showDone);
 
 async function doDelete(id) {
   const p = patients[id]; if (!p) return;

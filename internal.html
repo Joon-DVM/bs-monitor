@@ -94,7 +94,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel,
+  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, routeSteps, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -103,7 +103,8 @@ import { setupCalls } from './calls.js';
 const $ = (id) => document.getElementById(id);
 const TITLE = 'BS 보호자 모니터 (의국)';
 let store, patients = {}, prev = null;
-let showDone = (() => { try { return localStorage.getItem('bsm.showDone') === '1'; } catch { return false; } })();
+// 귀가 환자는 항상 숨김이 기본. '귀가 보기'는 1분 뒤 자동으로 다시 숨김 (PC에 기억하지 않음)
+let showDone = false, showDoneTimer = null;
 setupRefresh(document.getElementById('btnRefresh'));
 const arrivalRung = new Set();   // 이 PC에서 이미 '딩동'을 울린 대기 알림 (알림 1건당 한 번만 울림)
 
@@ -120,6 +121,7 @@ if (store.auth) {
 }
 
 setupCalls({ store, mount: $('phoneCalls') });
+startDailyCleanup(store);
 
 store.onConnection((ok) => {
   const c = $('conn');
@@ -143,7 +145,12 @@ function paintBtns() {
 }
 $('btnSound').onclick = () => { Sound.unlock(); Sound.setEnabled(!Sound.enabled); paintBtns(); if (Sound.enabled) Sound.play('chime'); };
 $('btnNotify').onclick = async () => { const r = await requestNotify(); paintBtns(); if (r === 'denied') toast('브라우저 설정에서 이 사이트의 알림을 허용해 주세요'); };
-$('btnDone').onclick = () => { showDone = !showDone; try { localStorage.setItem('bsm.showDone', showDone ? '1' : '0'); } catch {} paintBtns(); render(); };
+function setShowDone(v) {
+  showDone = v; clearTimeout(showDoneTimer);
+  if (v) showDoneTimer = setTimeout(() => setShowDone(false), SHOW_DONE_MS);
+  paintBtns(); render();
+}
+$('btnDone').onclick = () => setShowDone(!showDone);
 paintBtns();
 
 // ── 동작 ───────────────────────────────────
