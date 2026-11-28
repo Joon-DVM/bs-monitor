@@ -96,3 +96,10 @@ body { background: var(--bg); color: var(--text); }
 body.dark .cc-doc { background: #0c4a6e; color: #e0f2fe; }
 body.dark .ct-in { background: #7f1d1d; color: #fee2e2; }
 body.dark .ct-tm { background: #78350f; color: #fef3c7; }
+
+/* 확인 창 */
+.confirm-bg { position: fixed; inset: 0; background: rgba(10,14,22,.55); display: grid; place-items: center; z-index: 120; }
+.confirm-box { background: #fff; color: #0f172a; border-radius: 16px; padding: 22px 24px; width: min(440px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.confirm-t { font-size: 18px; font-weight: 900; margin-bottom: 8px; }
+.confirm-m { font-size: 15px; line-height: 1.55; color: #334155; }
+.confirm-a { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }

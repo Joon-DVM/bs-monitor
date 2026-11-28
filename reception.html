@@ -120,7 +120,7 @@
     <div class="add-row">
       <div class="field"><label for="inCat">고양이 이름</label><input id="inCat" class="inp" placeholder="예: 냥냥이" autocomplete="off"></div>
       <div class="field"><label for="inOwner">보호자 이름</label><input id="inOwner" class="inp" placeholder="예: 김땡땡" autocomplete="off"></div>
-      <button id="btnAdd" class="btn primary">환자 추가 · 내원 알림</button>
+      <button id="btnAdd" class="btn primary">환자 추가 · 내원</button>
     </div>
 
     <div id="selbar" class="selbar"></div>
@@ -152,7 +152,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, statusLabel, routeSteps,
+  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -237,6 +237,7 @@ $('btnShowDone').onclick = () => { showDone = !showDone; try { localStorage.setI
 
 async function doDelete(id) {
   const p = patients[id]; if (!p) return;
+  if (!(await confirmDialog({ title: `${displayName(p)} 기록 삭제`, message: DELETE_WARNING }))) return;
   const snap = JSON.parse(JSON.stringify(p));
   await store.remove(id);
   if (selected === id) select(null);
@@ -251,7 +252,7 @@ async function addPatient() {
   $('inCat').value = ''; $('inOwner').value = '';
   select(id);
   $('inCat').focus();
-  toast(`${displayName({ cat: cat || '(이름 미입력)', owner })} 내원 — 의국에 알림 전송`);
+  toast(`${displayName({ cat: cat || '(이름 미입력)', owner })} 내원 등록`);
 }
 $('btnAdd').onclick = addPatient;
 $('inCat').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); $('inOwner').value.trim() ? addPatient() : $('inOwner').focus(); } });
@@ -418,6 +419,7 @@ store.onPatients((data) => {
 $('btnCleanup').onclick = async () => {
   const done = Object.entries(patients).filter(([, p]) => p.status === '귀가');
   if (!done.length) { toast('정리할 귀가 환자가 없습니다'); return; }
+  if (!(await confirmDialog({ title: `귀가 환자 ${done.length}명 기록 삭제`, message: DELETE_WARNING }))) return;
   const snaps = done.map(([id, p]) => [id, JSON.parse(JSON.stringify(p))]);
   for (const [id] of done) await store.remove(id);
   toast(`귀가 환자 ${done.length}명 정리됨`, { ms: 7000, action: { label: '되돌리기', run: () => snaps.forEach(([id, p]) => store.restore(id, p)) } });

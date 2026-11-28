@@ -472,6 +472,29 @@ export function setupRefresh(btn) {
   }, 3 * 60 * 1000);
 }
 
+// 확인 창 (화면 안에 띄움). 확인 → true, 취소/바깥 클릭/Esc → false
+export function confirmDialog({ title, message, ok = '삭제', cancel = '취소' }) {
+  return new Promise((resolve) => {
+    const el = document.createElement('div');
+    el.className = 'confirm-bg';
+    el.innerHTML = `<div class="confirm-box" role="dialog" aria-modal="true">
+      <div class="confirm-t">${esc(title || '')}</div>
+      <div class="confirm-m">${esc(message || '').replace(/\n/g, '<br>')}</div>
+      <div class="confirm-a"><button class="btn" data-v="0">${esc(cancel)}</button><button class="btn danger" data-v="1">${esc(ok)}</button></div>
+    </div>`;
+    const done = (v) => { document.removeEventListener('keydown', onKey); el.remove(); resolve(v); };
+    const onKey = (e) => { if (e.key === 'Escape') done(false); };
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-v]');
+      if (b) done(b.dataset.v === '1'); else if (e.target === el) done(false);
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(el);
+    el.querySelector('button[data-v="0"]').focus();   // 기본 선택은 '취소'
+  });
+}
+export const DELETE_WARNING = '정말 지울까요? 귀가 보기에도 사라집니다.\n일마감 전에는 가급적 지우지 마시고 귀가 숨기기로 해주세요.';
+
 // 토스트
 export function toast(msg, opts = {}) {
   let wrap = document.getElementById('toasts');
