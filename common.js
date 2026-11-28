@@ -6,6 +6,8 @@ export { SETTINGS };
 export const STATUS = {
   '진료대기중':   { group: 'wait',  color: '#b91c1c', bg: '#fee2e2' },
   '면회대기중':   { group: 'wait',  color: '#b91c1c', bg: '#fee2e2' },
+  // 의국에서 면회대기중 알림을 확인하면 자동으로 바뀌는 상태 (리셉션 버튼에는 없음)
+  '면회중':       { group: 'meet',  color: '#be185d', bg: '#fce7f3' },
   '원내':         { group: 'place', color: '#c2410c', bg: '#ffedd5' },
   '라운지':       { group: 'place', color: '#6d28d9', bg: '#ede9fe' },
   '외출':         { group: 'place', color: '#1d4ed8', bg: '#dbeafe' },
@@ -37,7 +39,7 @@ export function normalizePatients(data) {
   return data;
 }
 export const INITIAL_STATUS = '원내';
-const GROUP_ORDER = { wait: 0, room: 1, call: 2, place: 3, done: 4 };
+const GROUP_ORDER = { wait: 0, room: 1, meet: 1, call: 2, place: 3, done: 4 };
 export const groupRank = (s) => GROUP_ORDER[(STATUS[s] || {}).group] ?? 9;
 
 // ── 저장소 ───────────────────────────────────────────────────
@@ -428,7 +430,9 @@ export const BEFORE_ROOM_LABEL = '원내(진료전)';
 const hadRoomBefore = (logs, i) => logs.slice(0, i).some((l) => STATUS[l.s]?.group === 'room');
 export function statusLabel(p) {
   if (!p) return '';
-  if (p.status !== INITIAL_STATUS || isSilent(p)) return p.status;
+  if (isSilent(p)) return p.status;
+  if (STATUS[p.status]?.group === 'room') { const lg = visitLogs(p); return hadMeetBefore(lg, lg.length - 1) ? AFTER_MEET_ROOM_LABEL : p.status; }
+  if (p.status !== INITIAL_STATUS) return p.status;
   const logs = visitLogs(p);
   if (logs.length <= 1) return ARRIVAL_LABEL;
   return hadRoomBefore(logs, logs.length) ? AFTER_ROOM_LABEL : BEFORE_ROOM_LABEL;
@@ -439,6 +443,13 @@ export function statusLabel(p) {
 export function alertOf(p) {
   const a = p && p.alert;
   return a && a.status === p.status && WAIT_STATUSES.includes(p.status) && !isSilent(p) ? a : null;
+}
+// 대기 알림 확인(완료): 면회대기중이면 상태를 '면회중'으로 바꾸고 기록에 남김 (면회 시간은 이때부터 계산)
+export const MEET_STATUS = '면회중';
+export function ackAlert(store, id, p) {
+  const a = alertOf(p); if (!a || a.ackAt) return;
+  if (p.status === '면회대기중') return store.update(id, { 'alert/ackAt': NOW, status: MEET_STATUS, statusAt: NOW }, MEET_STATUS);
+  return store.update(id, { 'alert/ackAt': NOW });
 }
 export const isAlertPending = (p) => { const a = alertOf(p); return !!a && !a.ackAt && !a.holdAt; };
 export const isAlertHeld = (p) => { const a = alertOf(p); return !!a && !a.ackAt && !!a.holdAt; };
@@ -456,26 +467,38 @@ export function routeSteps(p) {
   const transient = SETTINGS.transientStatuses || [];
   const out = [];
   // 진료실 방문이 한 번이면 '진료/상담', 두 번 이상이면 첫 번째 '진료/검사', 이후 '검사후 상담'
-  const roomCount = logs.filter((l) => STATUS[l.s]?.group === 'room').length;
-  let roomNo = 0;
+  // 면회(면회대기중·면회중) 뒤의 진료실은 '면회 후 상담' (지금이든 지난 것이든), 그 진료실은 위 횟수에서 뺌
+  const isRoom = (l) => STATUS[l.s]?.group === 'room';
+  const roomCount = logs.filter((l, i) => isRoom(l) && !hadMeetBefore(logs, i)).length;
+  let roomNo = 0, meetBreak = true;
   logs.forEach((l, i) => {
+    if (!isMeet(l.s) && i > 0) meetBreak = true;
     const first = i === 0, last = i === logs.length - 1;
-    const room = STATUS[l.s]?.group === 'room';
-    if (room) roomNo++;
+    const room = isRoom(l);
+    const afterMeet = room && hadMeetBefore(logs, i);
+    if (room && !afterMeet) roomNo++;
     // 지난 진료실은 위 이름으로, 지금 진료실이면 실제 이름 (1진료실 등)
     const pastRoom = roomCount < 2 ? (SETTINGS.pastRoomLabel || l.s) : roomNo === 1 ? FIRST_ROOM_LABEL : LATER_ROOM_LABEL;
     const label = first ? (logs.length === 1 ? ARRIVAL_LABEL : '내원')
+      : afterMeet ? AFTER_MEET_ROOM_LABEL
+      : l.s === MEET_STATUS && !last ? PAST_MEET_LABEL
       : room && !last ? pastRoom
       : last && l.s === INITIAL_STATUS ? (hadRoomBefore(logs, i) ? AFTER_ROOM_LABEL : BEFORE_ROOM_LABEL)
       : l.s;
     if (!first && !last && transient.includes(l.s)) return;
     // 같은 상태가 연달아 남으면 합침 (진료실은 진료 횟수이므로 합치지 않음)
-    if (!first && !room && out.length && out[out.length - 1].label === label) return;
+    // (면회는 사이에 다른 상태가 있었으면 따로 셈)
+    if (!first && !room && out.length && out[out.length - 1].label === label && !(label === PAST_MEET_LABEL && meetBreak)) return;
+    if (label === PAST_MEET_LABEL) meetBreak = false;
     out.push({ at: l.at, label, first });
   });
   return out;
 }
 export const FIRST_ROOM_LABEL = '진료/검사';
+export const AFTER_MEET_ROOM_LABEL = '면회 후 상담';
+export const PAST_MEET_LABEL = '면회';
+const isMeet = (s) => s === '면회대기중' || s === MEET_STATUS;
+const hadMeetBefore = (logs, i) => logs.slice(0, i).some((l) => isMeet(l.s));
 export const LATER_ROOM_LABEL = '검사후 상담';
 
 // ── 귀가한 방문의 시간 분석 ─────────────────
@@ -487,15 +510,21 @@ export function visitStats(p) {
   const start = logs[0].at;
   const last = logs[logs.length - 1];
   const end = last.s === '귀가' ? last.at : (p.statusAt || last.at);
-  let care = 0, rooms = 0, firstRoom = null, lastRoomEnd = null, meet = 0, meets = 0;
+  let care = 0, rooms = 0, firstRoom = null, lastRoomEnd = null, meet = 0, meets = 0, firstMeet = null, inMeet = false;
   logs.forEach((l, i) => {
     // 면회: 면회대기중이 된 순간부터 다른 상태로 바뀔 때까지 (연달아 있으면 한 번으로)
-    if (l.s === '면회대기중') {
-      const segEnd = logs[i + 1] ? logs[i + 1].at : end;
+    // 면회: 의국 확인으로 '면회중'이 된 순간부터 다른 상태로 바뀔 때까지.
+    // (확인 없이 바로 다른 상태로 간 면회대기중은 면회대기중 시각부터)
+    if (isMeet(l.s)) {
+      if (!inMeet) { meets++; inMeet = true; }  // 연달아 이어진 면회는 한 번으로
+      const next = logs[i + 1];
+      if (l.s === '면회대기중' && next && next.s === MEET_STATUS) return;  // 곧 면회중으로 이어짐
+      const segEnd = next ? next.at : end;
       meet += Math.max(0, segEnd - l.at);
-      if (!(i > 0 && logs[i - 1].s === '면회대기중')) meets++;
+      if (firstMeet == null) firstMeet = l.at;
       return;
     }
+    inMeet = false;
     if (STATUS[l.s]?.group !== 'room') return;
     const segEnd = logs[i + 1] ? logs[i + 1].at : end;
     rooms++;
@@ -506,6 +535,7 @@ export function visitStats(p) {
   return {
     start, end, total: Math.max(0, end - start), rooms, care, meet, meets,
     toFirst: firstRoom == null ? null : Math.max(0, firstRoom - start),
+    toMeet: firstMeet == null ? null : Math.max(0, firstMeet - start),
     afterCare: lastRoomEnd == null ? null : Math.max(0, end - lastRoomEnd),
   };
 }
@@ -518,12 +548,16 @@ export function fmtDur(ms) {
 }
 export function visitStatsParts(p) {
   const v = visitStats(p); if (!v) return null;
-  const items = [v.rooms ? `수의사상담시간 ${fmtDur(v.care)}` : '수의사상담 기록 없음'];
-  if (v.meets) items.push(`총면회시간 ${fmtDur(v.meet)}${v.meets > 1 ? ` (${v.meets}번)` : ''}`);
+  // 순서: 총체류 / 내원 후 진료시작까지(진료 없이 면회만이면 면회까지) / 수의사대면상담 / 진료종료후 귀가 / 총면회
+  // 계산할 수 있는 것만 표시
+  const items = [];
+  if (v.rooms) items.push(`내원 후 진료시작까지 ${fmtDur(v.toFirst)}`);
+  else if (v.meets) items.push(`내원 후 면회까지 ${fmtDur(v.toMeet)}`);
   if (v.rooms) {
-    items.push(`진료시작까지 ${fmtDur(v.toFirst)}`);
+    items.push(`수의사대면상담시간 ${fmtDur(v.care)}`);
     items.push(v.afterCare < 60000 ? '진료종료후 바로 귀가' : `진료종료후 ${fmtDur(v.afterCare)}후 귀가`);
   }
+  if (v.meets) items.push(`총면회시간 ${fmtDur(v.meet)}${v.meets > 1 ? ` (${v.meets}번)` : ''}`);
   return { total: `총체류시간 ${fmtDur(v.total)}`, items };
 }
 // 둥근 사각형 칩으로 가로 배치 (창 너비에 따라 줄바꿈)

@@ -97,7 +97,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup, visitStatsHtml,
+  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup, ackAlert, visitStatsHtml,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, routeSteps, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -157,7 +157,7 @@ $('btnDone').onclick = () => setShowDone(!showDone);
 paintBtns();
 
 // ── 동작 ───────────────────────────────────
-const ack = (id) => alertOf(patients[id]) && !alertOf(patients[id]).ackAt && store.update(id, { 'alert/ackAt': NOW });
+const ack = (id) => ackAlert(store, id, patients[id]);
 const hold = (id, auto = false) => isAlertPending(patients[id]) && store.update(id, { 'alert/holdAt': NOW, 'alert/holdAuto': auto });
 document.body.addEventListener('click', async (e) => {
   const b = e.target.closest('button[data-act]'); if (!b) return;

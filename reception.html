@@ -157,7 +157,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup, visitStatsHtml,
+  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup, ackAlert, visitStatsHtml,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -300,7 +300,7 @@ $('list').addEventListener('click', (e) => {
   if (ok) {   // 리셉션에서 대기 알림 완료 처리 (소리 없음)
     e.stopPropagation();
     const p = patients[ok.dataset.ack];
-    if (alertOf(p) && !alertOf(p).ackAt) store.update(ok.dataset.ack, { 'alert/ackAt': NOW });
+    ackAlert(store, ok.dataset.ack, p);
     return;
   }
   const r = e.target.closest('.row'); if (!r) return;
@@ -403,7 +403,8 @@ function tick() {
       el.className = 'el tick ' + t.level;
     } else if (k === 'ack') {
       const a = alertOf(p);
-      if (!a) { el.className = 'ack tick'; el.textContent = ''; }
+      if (!a && p.status === '면회중' && p.alert && p.alert.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(p.alert.ackAt)}`; }
+      else if (!a) { el.className = 'ack tick'; el.textContent = ''; }
       else if (a.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(a.ackAt)}`; }
       else if (a.holdAt) { el.className = 'ack tick hold'; el.textContent = `⏸ 의국 보류 ${fmtHM(a.holdAt)}`; }
       else {
@@ -431,6 +432,7 @@ store.onPatients((data) => {
       }
       const a = alertOf(p), oa = o && alertOf(o);
       if (a && oa && a.at === oa.at && !oa.ackAt && a.ackAt) toast(`✓ ${p.status} 확인 — ${displayName(p)}`);
+      if (oa && !oa.ackAt && p.status === '면회중' && o.status === '면회대기중') toast(`✓ 면회 확인 — ${displayName(p)} 면회중`);
       if (a && oa && a.at === oa.at && !oa.holdAt && a.holdAt && !a.ackAt) toast(`⏸ 의국 보류 — ${displayName(p)}`);
     }
   }
