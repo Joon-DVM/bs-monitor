@@ -327,6 +327,12 @@ export function fmtSec(ms) {
 // 형식: [입원/]보호자(고양이[/전화번호]) - 용건 [/ 담당 선생님]   (+ 다음 줄 '*메모')
 // '<오늘 통화요청건>' 아래 줄은 남은 건 정리 목록이라 제외, '<내일 …>' 아래 줄은 '내일' 요청으로 표시
 const CALL_RE = /^(입원\s*\/\s*)?([^()\/]+?)\s*\(\s*([^)\/]+?)\s*(?:\/\s*([^)]*?))?\s*\)\s*[-–]\s*(.+)$/;
+// 손으로 쓰다 생기는 흔한 실수도 알아봄: 전각 괄호·대시, 전화번호 뒤 ')' 빠짐
+const CALL_RE_LOOSE = /^(입원\s*\/\s*)?([^()\/]+?)\s*\(\s*([^)\/]+?)\s*\/\s*(0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4})\s*\)?\s*[-–]\s*(.+)$/;
+function matchCallLine(line) {
+  const t = line.replace(/（/g, '(').replace(/）/g, ')').replace(/[－—―]/g, '-');
+  return t.match(CALL_RE) || t.match(CALL_RE_LOOSE);
+}
 export function parseFlowTime(s) {
   const m = String(s || '').match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
   return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : (Date.parse(s) || 0);
@@ -342,7 +348,7 @@ export function parseCallMessage(msg) {
     const h = line.match(/^<\s*(.+?)\s*>$/);
     if (h) { header = h[1]; lastReq = null; return; }
     if (line.startsWith('*')) { if (lastReq) lastReq.note = (lastReq.note ? lastReq.note + '\n' : '') + line.replace(/^\*\s*/, ''); return; }
-    const m = line.match(CALL_RE);
+    const m = matchCallLine(line);
     if (!m || /오늘/.test(header)) { lastReq = null; return; }
     let rest = m[5].trim(), doctor = '';
     const k = rest.lastIndexOf('/');
