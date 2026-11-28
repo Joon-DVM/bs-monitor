@@ -33,7 +33,11 @@
 
   /* 카드 */
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--cardmin, 300px), 100%), 1fr)); grid-auto-rows: 1fr; gap: 14px; align-items: stretch; }
-  .pinwrap { display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px; }
+  /* 원장님 카드: 왼쪽에 최소 너비로 고정(창을 넓혀도 안 늘어남), 나머지 카드는 오른쪽 격자에서 같은 너비·높이로 균등 배치 */
+  .sidewrap { display: flex; gap: 14px; align-items: flex-start; }
+  .sidewrap .pinwrap { flex: 0 0 auto; display: flex; flex-direction: column; gap: 14px; width: max-content; max-width: 320px; }
+  .sidewrap .cards { flex: 1 1 0; min-width: 0; }
+  @media (max-width: 700px) { .sidewrap { flex-direction: column; align-items: stretch; } .sidewrap .pinwrap { width: auto; max-width: none; } }
   .pc.meeting { border: 3px solid #ef4444; animation: heldBlink 1s infinite; }
   .pc { background: var(--card); border: 1.5px solid var(--line); border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
   .pc.unack { border: 2px solid #ef4444; animation: pulse 1.3s infinite; }
@@ -44,7 +48,7 @@
   .pc.done { opacity: .5; }
   .pc-h { display: flex; align-items: flex-start; gap: 10px; }
   .pc-h .nm { font-size: 22px; font-weight: 900; letter-spacing: -.4px; flex: 1; word-break: keep-all; }
-  .nm .vet { margin-left: 8px; font-size: 13px; font-weight: 800; color: #cbd5e1; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 2px 8px; vertical-align: 3px; letter-spacing: 0; }
+  .nm .vet { display: inline-block; white-space: nowrap; margin-left: 8px; font-size: 13px; font-weight: 800; color: #cbd5e1; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 2px 8px; vertical-align: 3px; letter-spacing: 0; }
   .meta { color: var(--muted); font-size: 14px; }
   .vstats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
   .vchip { padding: 5px 11px; border: 1.5px solid #334155; background: #1e293b; border-radius: 10px; font-size: 13px; font-weight: 800; color: #e2e8f0; white-space: nowrap; }
@@ -98,7 +102,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup, ackAlert, ackLabel, silentFirst, gridHtml, fitCards, visitStatsHtml,
+  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup, ackAlert, ackLabel, silentFirst, gridHtml, fitCards, vetTag, visitStatsHtml,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, routeSteps, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -202,7 +206,7 @@ function render() {
       <div class="arrive-h"><div class="t">🔔 대기 알림 ${unacked.length}건</div><div class="sp"></div>
         ${unacked.length > 1 ? '<button class="btn holdall" data-act="holdall">모두 보류</button><button class="btn ackall" data-act="ackall">모두 완료</button>' : ''}</div>
       <div class="arrive-list">${unacked.map((p) => `
-        <div class="arrive-item"><div><div class="nm">${esc(displayName(p))}${p.vet ? `<span class="vet">🩺 ${esc(p.vet)}</span>` : ''}</div>
+        <div class="arrive-item"><div><div class="nm">${esc(displayName(p))}${vetTag(p)}</div>
           <div class="m"><b>${esc(p.status)}</b> ${fmtHM(alertOf(p).at)} · <span class="cd tick" data-k="cd" data-id="${p.id}"></span>${p.memo ? ' · 📝 ' + esc(p.memo) : ''}</div></div>
           <div class="sp"></div><button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">${ackLabel(p)}</button></div>`).join('')}
       </div>
@@ -229,8 +233,8 @@ function render() {
       ? `<div class="callst">📣 콜요청 중 · <span class="tick" data-k="ago" data-t="${p.call.at || now}"></span> 전 · ${p.call.seenAt ? '<span class="ok">리셉션 확인 ✓</span>' : '리셉션 알림 중…'}</div>`
       : '';
     return `<div class="${cls}">
-      <div class="pc-h"><div class="nm">${esc(displayName(p))}${p.vet && !isSilent(p) ? `<span class="vet">🩺 ${esc(p.vet)}</span>` : ''}</div><span class="badge" style="${badgeStyle(p.status)}">${esc(statusLabel(p))}</span></div>
-      <div class="meta"><span class="tick" data-k="el" data-id="${p.id}"></span></div>
+      <div class="pc-h"><div class="nm">${esc(displayName(p))}${vetTag(p)}</div><span class="badge" style="${badgeStyle(p.status)}">${esc(statusLabel(p))}</span></div>
+      ${isSilent(p) ? '' : `<div class="meta"><span class="tick" data-k="el" data-id="${p.id}"></span></div>`}
       ${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}
       ${steps && !isSilent(p) ? `<div class="tl">${routeHtml(p)}</div>` : ''}
       ${held ? `<div class="heldst">⏸ ${esc(p.status)} 알림 보류 중 · ${fmtHM(alertOf(p).holdAt)}${alertOf(p).holdAuto ? ' (자동)' : ''}</div>` : ''}
@@ -243,7 +247,7 @@ function render() {
       </div>
     </div>`;
   };
-  $('cards').innerHTML = list.length ? gridHtml(list, cardHtml, 'cards') : `<div class="empty">현재 원내 보호자가 없습니다.<br>리셉션에서 환자를 추가하면 여기에 알림과 함께 표시됩니다.</div>`;
+  $('cards').innerHTML = list.length ? gridHtml(list, cardHtml, 'cards', { side: true }) : `<div class="empty">현재 원내 보호자가 없습니다.<br>리셉션에서 환자를 추가하면 여기에 알림과 함께 표시됩니다.</div>`;
 
   tick();
 }

@@ -664,12 +664,18 @@ export function setupAutocomplete(input, getNames, { onEnter } = {}) {
   return { clear: () => { input.value = ''; items = []; paint(); } };
 }
 
+// 카드에 보이는 수의사 이름 (config vetShort, 없으면 입력 그대로)
+export const vetLabel = (name) => { const n = String(name || '').trim(); return (SETTINGS.vetShort || {})[n] || n; };
+export const vetTag = (p) => (p && p.vet && !isSilent(p) ? `<span class="vet">🩺 ${esc(vetLabel(p.vet))}</span>` : '');
+
 // ── 카드 격자 ───────────────────────────────
 // 원장님 카드는 격자 밖 맨 위에 한 줄 전체, 나머지는 같은 너비·같은 높이의 격자
-export function gridHtml(list, cardHtml, gridClass) {
+// side: true 이면 원장님 카드를 왼쪽에 최소 너비로 두고 나머지 격자를 그 오른쪽에 (의국)
+export function gridHtml(list, cardHtml, gridClass, { side = false } = {}) {
   const pinned = list.filter(isSilent), rest = list.filter((p) => !isSilent(p));
-  return (pinned.length ? `<div class="pinwrap">${pinned.map(cardHtml).join('')}</div>` : '')
-    + (rest.length ? `<div class="${gridClass}">${rest.map(cardHtml).join('')}</div>` : '');
+  const pin = pinned.length ? `<div class="pinwrap">${pinned.map(cardHtml).join('')}</div>` : '';
+  const grid = rest.length ? `<div class="${gridClass}">${rest.map(cardHtml).join('')}</div>` : '';
+  return side ? `<div class="sidewrap">${pin}${grid}</div>` : pin + grid;
 }
 // 카드 최소 너비 = 귀가 시간 칩이 한 줄에 다 들어가는 너비 (없으면 기본값).
 // 격자는 auto-fit 이라 남는 가로 공간은 카드들이 똑같이 나눠 가짐.
