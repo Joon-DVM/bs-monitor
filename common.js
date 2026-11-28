@@ -307,7 +307,8 @@ export function waitLevel(p, now) {
 export const logList = (p) => Object.values(p.log || {}).filter((l) => l && l.at).sort((a, b) => a.at - b.at);
 // 화면에 보여줄 동선
 // - 첫 기록은 '내원'
-// - 잠깐 거쳐 가는 상태(config transientStatuses)는 마지막(현재) 상태일 때만 표시
+// - 잠깐 거쳐 가는 상태(config transientStatuses, 원내 포함)는 마지막(현재) 상태일 때만 표시
+// - 지난 진료실은 config pastRoomLabel('진료/상담')로 통일
 // - 숨긴 뒤 같은 상태가 연달아 남으면 하나로 합침 (먼저 시각 유지, 진료실은 재입실이므로 합치지 않음)
 // 이번 방문의 기록만: 마지막 '귀가' 이후 (귀가를 되돌린 경우는 같은 방문으로 이어짐)
 function visitLogs(p) {
@@ -332,9 +333,12 @@ export function routeSteps(p) {
   const out = [];
   logs.forEach((l, i) => {
     const first = i === 0, last = i === logs.length - 1;
-    const label = first ? '내원' : l.s;
+    const room = STATUS[l.s]?.group === 'room';
+    // 지난 진료실은 '진료/상담'으로 통일, 지금 진료실이면 실제 이름
+    const label = first ? '내원' : (room && !last ? (SETTINGS.pastRoomLabel || l.s) : l.s);
     if (!first && !last && transient.includes(l.s)) return;
-    if (!first && out.length && out[out.length - 1].label === label && STATUS[label]?.group !== 'room') return;
+    // 같은 상태가 연달아 남으면 합침 (진료실은 진료 횟수이므로 합치지 않음)
+    if (!first && !room && out.length && out[out.length - 1].label === label) return;
     out.push({ at: l.at, label, first });
   });
   return out;
