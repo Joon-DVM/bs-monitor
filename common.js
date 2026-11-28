@@ -145,7 +145,9 @@ function createLocalStore() {
     async updateCall(id, fields) { const c = (state.calls || {})[id]; if (!c) return; const t = Date.now(); for (const k in fields) setPath(c, k, resolveNow(fields[k], t)); commit(); },
     async tryLease() { return false; },
     // 여러 건을 한 번에: { patients: {id: null}, calls: {id: 값 또는 null} }
-    async bulk({ patients = {}, calls = {} }) {
+    async bulk({ patients = {}, calls = {}, visits = {} }) {
+      state.visits = state.visits || {};
+      for (const k in visits) state.visits[k] = visits[k];
       for (const id in patients) if (patients[id] === null) delete state.patients[id];
       state.calls = state.calls || {};
       for (const id in calls) { if (calls[id] === null) delete state.calls[id]; else state.calls[id] = calls[id]; }
@@ -212,8 +214,9 @@ async function createFirebaseStore() {
       for (const k in fields) u[`bsm/calls/${id}/${k}`] = resolveNow(fields[k], ts) ?? null;
       await update(ref(db), u);
     },
-    async bulk({ patients = {}, calls = {} }) {
+    async bulk({ patients = {}, calls = {}, visits = {} }) {
       const u = {};
+      for (const k in visits) u[`bsm/visits/${k}`] = visits[k];
       for (const id in patients) u[`${ROOT}/${id}`] = patients[id];
       for (const id in calls) u[`bsm/calls/${id}`] = calls[id];
       if (Object.keys(u).length) await update(ref(db), u);
@@ -402,7 +405,7 @@ export const logList = (p) => Object.values(p.log || {}).filter((l) => l && l.at
 // 화면에 보여줄 동선
 // - 첫 기록은 '내원'
 // - 잠깐 거쳐 가는 상태(config transientStatuses, 원내 포함)는 마지막(현재) 상태일 때만 표시
-// - 지난 진료실은 config pastRoomLabel('진료/상담')로 통일
+// - 지난 진료실: 한 번이면 '진료/상담'(config pastRoomLabel), 두 번 이상이면 첫 번째 '진료/검사', 이후 '검사후 상담'
 // - 숨긴 뒤 같은 상태가 연달아 남으면 하나로 합침 (먼저 시각 유지, 진료실은 재입실이므로 합치지 않음)
 // 이번 방문의 기록만: 마지막 '귀가' 이후 (귀가를 되돌린 경우는 같은 방문으로 이어짐)
 function visitLogs(p) {
@@ -452,12 +455,17 @@ export function routeSteps(p) {
   const logs = visitLogs(p);
   const transient = SETTINGS.transientStatuses || [];
   const out = [];
+  // 진료실 방문이 한 번이면 '진료/상담', 두 번 이상이면 첫 번째 '진료/검사', 이후 '검사후 상담'
+  const roomCount = logs.filter((l) => STATUS[l.s]?.group === 'room').length;
+  let roomNo = 0;
   logs.forEach((l, i) => {
     const first = i === 0, last = i === logs.length - 1;
     const room = STATUS[l.s]?.group === 'room';
-    // 지난 진료실은 '진료/상담'으로 통일, 지금 진료실이면 실제 이름
+    if (room) roomNo++;
+    // 지난 진료실은 위 이름으로, 지금 진료실이면 실제 이름 (1진료실 등)
+    const pastRoom = roomCount < 2 ? (SETTINGS.pastRoomLabel || l.s) : roomNo === 1 ? FIRST_ROOM_LABEL : LATER_ROOM_LABEL;
     const label = first ? (logs.length === 1 ? ARRIVAL_LABEL : '내원')
-      : room && !last ? (SETTINGS.pastRoomLabel || l.s)
+      : room && !last ? pastRoom
       : last && l.s === INITIAL_STATUS ? (hadRoomBefore(logs, i) ? AFTER_ROOM_LABEL : BEFORE_ROOM_LABEL)
       : l.s;
     if (!first && !last && transient.includes(l.s)) return;
@@ -467,6 +475,51 @@ export function routeSteps(p) {
   });
   return out;
 }
+export const FIRST_ROOM_LABEL = '진료/검사';
+export const LATER_ROOM_LABEL = '검사후 상담';
+
+// ── 귀가한 방문의 시간 분석 ─────────────────
+// 총 방문(내원→귀가), 총 진료(진료실에 들어간 순간부터 다음 상태로 바뀔 때까지의 합),
+// 진료 시작까지(내원→첫 진료실), 진료 종료 후 퇴원까지(마지막 진료실이 끝난 순간→귀가)
+export function visitStats(p) {
+  const logs = visitLogs(p);
+  if (!logs.length || p.status !== '귀가') return null;
+  const start = logs[0].at;
+  const last = logs[logs.length - 1];
+  const end = last.s === '귀가' ? last.at : (p.statusAt || last.at);
+  let care = 0, rooms = 0, firstRoom = null, lastRoomEnd = null;
+  logs.forEach((l, i) => {
+    if (STATUS[l.s]?.group !== 'room') return;
+    const segEnd = logs[i + 1] ? logs[i + 1].at : end;
+    rooms++;
+    care += Math.max(0, segEnd - l.at);
+    if (firstRoom == null) firstRoom = l.at;
+    lastRoomEnd = segEnd;
+  });
+  return {
+    start, end, total: Math.max(0, end - start), rooms, care,
+    toFirst: firstRoom == null ? null : Math.max(0, firstRoom - start),
+    afterCare: lastRoomEnd == null ? null : Math.max(0, end - lastRoomEnd),
+  };
+}
+// '1시간 5분' / '12분' / '1분 미만'
+export function fmtDur(ms) {
+  if (ms == null) return '-';
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return '1분 미만';
+  return m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간${m % 60 ? ' ' + (m % 60) + '분' : ''}`;
+}
+export function visitStatsParts(p) {
+  const v = visitStats(p); if (!v) return null;
+  return {
+    total: `총방문 ${fmtDur(v.total)} 후 퇴원`,
+    items: v.rooms
+      ? [`총 진료 ${fmtDur(v.care)}${v.rooms > 1 ? ` (${v.rooms}회)` : ''}`, `진료시작까지 ${fmtDur(v.toFirst)}`, `진료종료 후 퇴원까지 ${fmtDur(v.afterCare)}`]
+      : ['진료실 기록 없음'],
+  };
+}
+const dateKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
 // ── 매일 자정 정리 ─────────────────────────
 // 어제 이전에 귀가한 환자 기록, 어제 이전에 완료한 통화 요청을 지움.
 // 자정에 켜진 PC가 없으면 다음에 처음 켜지는 PC가 정리. (진행 중인 통화 요청·원내 환자는 그대로)
@@ -475,9 +528,18 @@ export const SHOW_DONE_MS = 60 * 1000;
 export function todayStart(now) { const d = new Date(now); d.setHours(0, 0, 0, 0); return d.getTime(); }
 export function cleanupPlan(patients, calls, now) {
   const start = todayStart(now), WEEK = 7 * 86400000;
-  const plan = { patients: {}, calls: {} };
+  const plan = { patients: {}, calls: {}, visits: {} };
   for (const [id, p] of Object.entries(patients || {})) {
-    if (p && p.status === '귀가' && (p.statusAt || 0) < start) plan.patients[id] = null;
+    if (!(p && p.status === '귀가' && (p.statusAt || 0) < start)) continue;
+    plan.patients[id] = null;
+    // 지우기 전에 방문 요약을 남김 (나중에 병목·대기 시간 분석용, 원장님 제외)
+    const v = visitStats(p);
+    if (v && !isSilent(p)) {
+      plan.visits[`${dateKey(v.start)}/${id}`] = {
+        cat: p.cat || '', owner: p.owner || '', ...v,
+        log: visitLogs(p).map((l) => ({ s: l.s, at: l.at })),
+      };
+    }
   }
   for (const [id, c] of Object.entries(calls || {})) {
     if (!c) continue;
@@ -493,7 +555,7 @@ export function startDailyCleanup(store) {
   const run = async () => {
     if (busy || !patients || !calls) return;
     const plan = cleanupPlan(patients, calls, store.now());
-    if (!Object.keys(plan.patients).length && !Object.keys(plan.calls).length) return;
+    if (!Object.keys(plan.patients).length && !Object.keys(plan.calls).length) return;  // visits는 patients와 함께만 생김
     busy = true;
     try {
       if (store.mode === 'firebase' && !(await store.tryLease('dailyCleanup', 50000))) return;

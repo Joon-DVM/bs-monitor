@@ -94,7 +94,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup,
+  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup, visitStatsParts,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, routeSteps, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -254,6 +254,8 @@ function tick() {
     }
     else if (k === 'el') {
       if (isSilent(p)) { el.innerHTML = `<b>${esc(statusLabel(p))}</b>`; return; }
+      const vs = visitStatsParts(p);
+      if (vs) { el.innerHTML = `<b>${esc(vs.total)}</b><br>${vs.items.map(esc).join(' · ')}`; return; }
       const t = stayParts(p, now);
       el.innerHTML = `<b>${esc(t.visit)}</b> · <b class="${t.level}">${esc(t.status)}</b>`;
     }

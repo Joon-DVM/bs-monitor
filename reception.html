@@ -152,7 +152,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup,
+  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup, visitStatsParts,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -391,6 +391,8 @@ function tick() {
     const p = patients[el.dataset.id]; if (!p) return;
     if (k === 'el') {
       if (isSilent(p)) { el.innerHTML = ''; el.className = 'el tick'; return; }
+      const vs = visitStatsParts(p);
+      if (vs) { el.innerHTML = `<div class="v">${esc(vs.total)}</div>${vs.items.map((x) => `<div class="s">${esc(x)}</div>`).join('')}`; el.className = 'el tick done'; return; }
       const t = stayParts(p, now);
       el.innerHTML = `<div class="v">${esc(t.visit)}</div><div class="s">${esc(t.status)}</div>`;
       el.className = 'el tick ' + t.level;
