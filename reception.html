@@ -139,7 +139,7 @@
     <div id="list" class="rows"></div>
     <div class="listfoot">
       <span id="count"></span>
-      <span><button id="btnShowDone" class="btn">귀가 보기</button> <button id="btnCleanup" class="btn">귀가 환자 기록 삭제</button></span>
+      <span><button id="btnShowDone" class="btn">귀가 보기</button></span>
     </div>
   </div>
 </div>
@@ -253,6 +253,7 @@ $('btnShowDone').onclick = () => setShowDone(!showDone);
 
 async function doDelete(id) {
   const p = patients[id]; if (!p) return;
+  if (p.status === '귀가') { toast('귀가 기록은 지울 수 없습니다 — 매일 자정에 자동으로 정리됩니다'); return; }
   if (!(await confirmDialog({ title: `${displayName(p)} 기록 삭제`, message: DELETE_WARNING }))) return;
   const snap = JSON.parse(JSON.stringify(p));
   await store.remove(id);
@@ -329,7 +330,9 @@ function render() {
     ? `선택: <b>${esc(displayName(sp))}</b> <span class="badge" style="${badgeStyle(sp.status)}">${esc(statusLabel(sp))}</span> <span class="muted">아래 버튼을 누르면 이 환자의 상태가 바뀝니다</span>`
     : `<span class="muted">[아래 목록에서 환자를 선택한 뒤 상태 버튼을 누르세요]</span>`;
   document.querySelectorAll('#statusBtns .sbtn').forEach((b) => {
-    b.disabled = !sp;
+    // 귀가 기록은 지울 수 없음 (매일 자정 자동 정리)
+    b.disabled = !sp || (!!b.dataset.del && sp.status === '귀가');
+    if (b.dataset.del) b.title = sp && sp.status === '귀가' ? '귀가 기록은 매일 자정에 자동으로 정리됩니다' : '잘못 등록한 환자만 지워 주세요';
     b.classList.toggle('cur', !!sp && b.dataset.s === sp.status);
     if (sp && b.dataset.s === sp.status) b.setAttribute('style', badgeStyle(sp.status)); else b.removeAttribute('style');
   });
@@ -431,15 +434,6 @@ store.onPatients((data) => {
   $('err').innerHTML = `<div class="err">데이터를 읽을 권한이 없습니다 (${esc(err.code || err.message)}). 허용된 계정으로 로그인했는지 확인하세요.</div>`;
 });
 
-// ── 귀가 정리 ───────────────────────────────
-$('btnCleanup').onclick = async () => {
-  const done = Object.entries(patients).filter(([, p]) => p.status === '귀가');
-  if (!done.length) { toast('정리할 귀가 환자가 없습니다'); return; }
-  if (!(await confirmDialog({ title: `귀가 환자 ${done.length}명 기록 삭제`, message: DELETE_WARNING }))) return;
-  const snaps = done.map(([id, p]) => [id, JSON.parse(JSON.stringify(p))]);
-  for (const [id] of done) await store.remove(id);
-  toast(`귀가 환자 ${done.length}명 정리됨`, { ms: 7000, action: { label: '되돌리기', run: () => snaps.forEach(([id, p]) => store.restore(id, p)) } });
-};
 </script>
 </body>
 </html>

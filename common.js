@@ -425,7 +425,7 @@ export const BEFORE_ROOM_LABEL = '원내(진료전)';
 const hadRoomBefore = (logs, i) => logs.slice(0, i).some((l) => STATUS[l.s]?.group === 'room');
 export function statusLabel(p) {
   if (!p) return '';
-  if (p.status !== INITIAL_STATUS) return p.status;
+  if (p.status !== INITIAL_STATUS || isSilent(p)) return p.status;
   const logs = visitLogs(p);
   if (logs.length <= 1) return ARRIVAL_LABEL;
   return hadRoomBefore(logs, logs.length) ? AFTER_ROOM_LABEL : BEFORE_ROOM_LABEL;
@@ -447,6 +447,8 @@ export function visitStart(p) {
   return (v[0] && v[0].at) || p.createdAt || Date.now();
 }
 export function routeSteps(p) {
+  // 원장님 등 특수 대상: 동선 기록 없이 지금 상태만 (원내·라운지·외출·귀가 …)
+  if (isSilent(p)) return [{ at: p.statusAt || p.createdAt, label: p.status, first: true }];
   const logs = visitLogs(p);
   const transient = SETTINGS.transientStatuses || [];
   const out = [];
@@ -561,7 +563,7 @@ export function confirmDialog({ title, message, ok = '삭제', cancel = '취소'
     el.querySelector('button[data-v="0"]').focus();   // 기본 선택은 '취소'
   });
 }
-export const DELETE_WARNING = '정말 지울까요? 귀가 보기에도 사라집니다.\n일마감 전에는 가급적 지우지 마시고 귀가 숨기기로 해주세요.';
+export const DELETE_WARNING = '정말 지울까요? 잘못 등록한 경우에만 지워 주세요.\n보호자가 돌아갔으면 지우지 말고 귀가로 바꿔 주세요. 귀가 기록은 매일 자정에 자동으로 정리됩니다.';
 
 // 토스트
 export function toast(msg, opts = {}) {

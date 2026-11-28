@@ -12,6 +12,9 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 //   ✅ 통화완료 – 이승빈(햇반) / 통화: 김형준 선생님
 //   문의사항 : *오늘 구토하였는데 …      ← 원글에 * 메모가 있을 때만
 //   통화메모: …                          ← 완료할 때 메모를 쓴 경우만
+// '김형준 원장님' → '김형준' (완료 목록에 이름만 짧게)
+const shortName = (n) => String(n || '').replace(/\s*(대표)?\s*(원장님|선생님|원장|쌤|님)\s*$/, '').trim();
+
 export function completionText(c, who, memo) {
   const title = /님$/.test(who) ? who : `${who} 선생님`;
   const reason = (c.reason || '').trim();
@@ -132,7 +135,7 @@ export function setupCalls({ store, mount }) {
         <span class="cc-sp"></span>
         ${done.length ? `<button class="btn calls-tg" data-cact="toggleDone">오늘 완료 ${done.length}건 ${showDone ? '숨기기' : '보기'}</button>` : ''}</div>
       ${open.length ? `<div class="calls-list">${open.map(card).join('')}</div>` : '<div class="calls-empty">남은 통화 요청이 없습니다</div>'}
-      ${showDone && done.length ? `<div class="calls-done">${done.map((c) => `<div class="cd-row">✓ ${fmtHM(c.doneAt)} ${esc(c.owner)}(${esc(c.pet)})${c.doctor ? ' / ' + esc(c.doctor) : ''} · ${c.status === 'flowdone' ? '플로우에서 완료' : '처리: ' + esc(c.doneBy || '')}${c.doneMemo ? ' · ' + esc(c.doneMemo) : ''}</div>`).join('')}</div>` : ''}
+      ${showDone && done.length ? `<div class="calls-done">${done.map((c) => `<div class="cd-row">✓ ${fmtHM(c.doneAt)} ${esc(c.owner)}(${esc(c.pet)})${c.doctor ? ' · To ' + esc(shortName(c.doctor)) : ''} / ${c.status === 'flowdone' ? '플로우에서 완료' : '처리 ' + esc(shortName(c.doneBy || ''))}${c.doneMemo ? ' · ' + esc(c.doneMemo) : ''}</div>`).join('')}</div>` : ''}
     </div>`;
     if (keep) {
       const w = mount.querySelector('.cc-who'), o = mount.querySelector('.cc-who-other'), m = mount.querySelector('.cc-memo');
