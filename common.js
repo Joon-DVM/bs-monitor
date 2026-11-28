@@ -518,13 +518,18 @@ export function fmtDur(ms) {
 }
 export function visitStatsParts(p) {
   const v = visitStats(p); if (!v) return null;
-  const items = [v.rooms ? `수의사상담시간 : ${fmtDur(v.care)}` : '수의사상담 기록 없음'];
-  if (v.meets) items.push(`총면회시간 : ${fmtDur(v.meet)}${v.meets > 1 ? ` (${v.meets}번)` : ''}`);
+  const items = [v.rooms ? `수의사상담시간 ${fmtDur(v.care)}` : '수의사상담 기록 없음'];
+  if (v.meets) items.push(`총면회시간 ${fmtDur(v.meet)}${v.meets > 1 ? ` (${v.meets}번)` : ''}`);
   if (v.rooms) {
     items.push(`진료시작까지 ${fmtDur(v.toFirst)}`);
     items.push(v.afterCare < 60000 ? '진료종료후 바로 귀가' : `진료종료후 ${fmtDur(v.afterCare)}후 귀가`);
   }
-  return { total: `총체류시간 : ${fmtDur(v.total)}`, items };
+  return { total: `총체류시간 ${fmtDur(v.total)}`, items };
+}
+// 둥근 사각형 칩으로 가로 배치 (창 너비에 따라 줄바꿈)
+export function visitStatsHtml(p) {
+  const vs = visitStatsParts(p); if (!vs) return '';
+  return `<div class="vstats"><span class="vchip main">${esc(vs.total)}</span>${vs.items.map((x) => `<span class="vchip">${esc(x)}</span>`).join('')}</div>`;
 }
 const dateKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 

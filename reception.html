@@ -62,7 +62,12 @@
   .row:hover { border-color: #b8c4d6; }
   .row.sel { border: 3px solid var(--sel); padding: 10.5px 16.5px; }
   .row.call { background: #fffbeb; }
-  .row.done { opacity: .55; }
+  .row.done { opacity: .8; }
+  .row.done .c-el { grid-column: 1 / -1; }
+  .row.done .c-ack { display: none; }
+  .vstats { display: flex; flex-wrap: wrap; gap: 6px; }
+  .vchip { padding: 5px 11px; border: 1.5px solid var(--btn-line); background: var(--btn); border-radius: 10px; font-size: 13px; font-weight: 800; color: #1e293b; white-space: nowrap; }
+  .vchip.main { background: #e0e7ff; border-color: #c7d2fe; color: #312e81; }
   .nm { font-size: 18px; font-weight: 800; letter-spacing: -.3px; }
   .memo { font-size: 13px; color: #475569; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tag { display: inline-block; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 6px; margin-left: 6px; vertical-align: 2px; }
@@ -152,7 +157,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup, visitStatsParts,
+  alertOf, statusLabel, routeSteps, confirmDialog, DELETE_WARNING, SHOW_DONE_MS, startDailyCleanup, visitStatsHtml,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -391,8 +396,8 @@ function tick() {
     const p = patients[el.dataset.id]; if (!p) return;
     if (k === 'el') {
       if (isSilent(p)) { el.innerHTML = ''; el.className = 'el tick'; return; }
-      const vs = visitStatsParts(p);
-      if (vs) { el.innerHTML = `<div class="v">${esc(vs.total)}</div>${vs.items.map((x) => `<div class="s">${esc(x)}</div>`).join('')}`; el.className = 'el tick done'; return; }
+      const vs = visitStatsHtml(p);
+      if (vs) { if (el.innerHTML !== vs) el.innerHTML = vs; el.className = 'el tick done'; return; }
       const t = stayParts(p, now);
       el.innerHTML = `<div class="v">${esc(t.visit)}</div><div class="s">${esc(t.status)}</div>`;
       el.className = 'el tick ' + t.level;

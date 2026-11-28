@@ -45,6 +45,9 @@
   .pc-h { display: flex; align-items: flex-start; gap: 10px; }
   .pc-h .nm { font-size: 22px; font-weight: 900; letter-spacing: -.4px; flex: 1; word-break: keep-all; }
   .meta { color: var(--muted); font-size: 14px; }
+  .vstats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+  .vchip { padding: 5px 11px; border: 1.5px solid #334155; background: #1e293b; border-radius: 10px; font-size: 13px; font-weight: 800; color: #e2e8f0; white-space: nowrap; }
+  .vchip.main { background: #312e81; border-color: #4338ca; color: #e0e7ff; }
   .meta b { color: #e2e8f0; }
   .meta .warn { color: #fb923c; font-weight: 800; }
   .meta .alert { color: #f87171; font-weight: 900; animation: blink 1.2s infinite; }
@@ -94,7 +97,7 @@
 <script type="module">
 import {
   createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent, visitStart, setupRefresh,
-  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup, visitStatsParts,
+  alertOf, isAlertPending, isAlertHeld, alertKey, statusLabel, SHOW_DONE_MS, startDailyCleanup, visitStatsHtml,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, routeSteps, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -254,8 +257,8 @@ function tick() {
     }
     else if (k === 'el') {
       if (isSilent(p)) { el.innerHTML = `<b>${esc(statusLabel(p))}</b>`; return; }
-      const vs = visitStatsParts(p);
-      if (vs) { el.innerHTML = `<b>${esc(vs.total)}</b><br>${vs.items.map(esc).join(' · ')}`; return; }
+      const vs = visitStatsHtml(p);
+      if (vs) { if (el.innerHTML !== vs) el.innerHTML = vs; return; }
       const t = stayParts(p, now);
       el.innerHTML = `<b>${esc(t.visit)}</b> · <b class="${t.level}">${esc(t.status)}</b>`;
     }
