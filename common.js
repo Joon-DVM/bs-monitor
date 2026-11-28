@@ -407,13 +407,15 @@ function visitLogs(p) {
 export const ARRIVAL_LABEL = '내원/진료준비중';
 // 진료실을 거친 뒤 '원내'로 돌아온 경우의 표시 (지금 원내일 때만, 지나면 동선에서 숨김)
 export const AFTER_ROOM_LABEL = '진료후 원내 대기중';
+// 내원 후 진료실을 아직 거치지 않고 (라운지·외출 등에서) '원내'로 돌아온 경우의 표시
+export const BEFORE_ROOM_LABEL = '원내(진료전)';
 const hadRoomBefore = (logs, i) => logs.slice(0, i).some((l) => STATUS[l.s]?.group === 'room');
 export function statusLabel(p) {
   if (!p) return '';
   if (p.status !== INITIAL_STATUS) return p.status;
   const logs = visitLogs(p);
   if (logs.length <= 1) return ARRIVAL_LABEL;
-  return hadRoomBefore(logs, logs.length) ? AFTER_ROOM_LABEL : p.status;
+  return hadRoomBefore(logs, logs.length) ? AFTER_ROOM_LABEL : BEFORE_ROOM_LABEL;
 }
 
 // 대기 알림: 진료대기중·면회대기중으로 바뀔 때마다 새 알림 (p.alert = {at, status, ackAt, holdAt, holdAuto})
@@ -441,7 +443,7 @@ export function routeSteps(p) {
     // 지난 진료실은 '진료/상담'으로 통일, 지금 진료실이면 실제 이름
     const label = first ? (logs.length === 1 ? ARRIVAL_LABEL : '내원')
       : room && !last ? (SETTINGS.pastRoomLabel || l.s)
-      : last && l.s === INITIAL_STATUS && hadRoomBefore(logs, i) ? AFTER_ROOM_LABEL
+      : last && l.s === INITIAL_STATUS ? (hadRoomBefore(logs, i) ? AFTER_ROOM_LABEL : BEFORE_ROOM_LABEL)
       : l.s;
     if (!first && !last && transient.includes(l.s)) return;
     // 같은 상태가 연달아 남으면 합침 (진료실은 진료 횟수이므로 합치지 않음)
