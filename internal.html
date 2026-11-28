@@ -91,7 +91,7 @@
 
 <script type="module">
 import {
-  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent,
+  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, groupRank, stayParts, isSilent, visitStart,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, routeSteps, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -174,7 +174,7 @@ function sorted() {
 function render() {
   const now = store.now();
   const all = Object.entries(patients).map(([id, p]) => ({ id, ...p }));
-  const unacked = all.filter(isPending).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const unacked = all.filter(isPending).sort((a, b) => visitStart(a) - visitStart(b));
 
   $('arrive').innerHTML = unacked.length ? `
     <div class="arrive">
@@ -182,7 +182,7 @@ function render() {
         ${unacked.length > 1 ? '<button class="btn holdall" data-act="holdall">모두 보류</button><button class="btn ackall" data-act="ackall">모두 완료</button>' : ''}</div>
       <div class="arrive-list">${unacked.map((p) => `
         <div class="arrive-item"><div><div class="nm">${esc(displayName(p))}</div>
-          <div class="m">내원 ${fmtClock(p.createdAt)} · <span class="cd tick" data-k="cd" data-id="${p.id}"></span>${p.memo ? ' · 📝 ' + esc(p.memo) : ''}</div></div>
+          <div class="m">내원 ${fmtClock(visitStart(p))} · <span class="cd tick" data-k="cd" data-id="${p.id}"></span>${p.memo ? ' · 📝 ' + esc(p.memo) : ''}</div></div>
           <div class="sp"></div><button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">✓ 완료</button></div>`).join('')}
       </div>
     </div>` : '';
@@ -253,7 +253,7 @@ function tick() {
 function holdDeadline(id, now) {
   const p = patients[id];
   if (!firstSeen[id]) firstSeen[id] = now;
-  return Math.max(p?.createdAt || now, firstSeen[id]) + SETTINGS.autoHoldSec * 1000;
+  return Math.max(p ? visitStart(p) : now, firstSeen[id]) + SETTINGS.autoHoldSec * 1000;
 }
 setInterval(tick, 1000);
 
@@ -276,6 +276,7 @@ store.onPatients((data) => {
   }
   prev = patients;
   for (const id of Object.keys(autoHoldSent)) if (!isPending(patients[id])) delete autoHoldSent[id];
+  for (const id of [...arrivalRung]) if (!isPending(patients[id])) { arrivalRung.delete(id); delete firstSeen[id]; }
   // 새 내원 알림음: 내원 1건당 한 번만 울림 (반복 없음)
   let ring = false;
   for (const [id, p] of Object.entries(patients)) {

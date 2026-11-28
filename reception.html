@@ -139,7 +139,7 @@
 
 <script type="module">
 import {
-  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent,
+  createStore, Sound, RepeatingAlarm, SETTINGS, STATUS, BUTTON_ROWS, WAIT_STATUSES, stayParts, isSilent, visitStart,
   esc, displayName, fmtClock, fmtHM, fmtElapsed, fmtSec, waitLevel, logList, routeHtml, isToday, badgeStyle,
   toast, soundGate, loginScreen, desktopNotify, requestNotify, notifyState, NOW,
 } from './common.js';
@@ -202,11 +202,13 @@ async function setStatus(id, s) {
   const p = patients[id]; if (!p || p.status === s) return;
   const f = { status: s, statusAt: NOW };
   if (p.call && !KEEP_CALL.includes(s)) f.call = null;
+  // 귀가했던 보호자를 다시 원내 등으로 바꾸면 새 내원으로 보고 의국 알림을 다시 보냄
+  if (p.status === '귀가') { f.ackAt = null; f.holdAt = null; f.holdAuto = null; }
   const prevStatus = p.status;
   await store.update(id, f, s);
   if (s === '귀가' && !showDone) {
     if (selected === id) select(null);
-    toast(`${displayName(p)} 귀가 — 목록에서 숨김`, { ms: 7000, action: { label: '되돌리기', run: () => store.update(id, { status: prevStatus, statusAt: NOW }, prevStatus) } });
+    toast(`${displayName(p)} 귀가 — 목록에서 숨김`, { ms: 7000, action: { label: '되돌리기', run: () => store.update(id, { status: prevStatus, statusAt: NOW }, { s: prevStatus, undo: true }) } });
   }
 }
 
@@ -269,7 +271,7 @@ $('callBanner').addEventListener('click', async (e) => {
 function sorted() {
   return Object.entries(patients).map(([id, p]) => ({ id, ...p }))
     .filter((p) => showDone || p.status !== '귀가')
-    .sort((a, b) => ((a.status === '귀가') - (b.status === '귀가')) || ((a.createdAt || 0) - (b.createdAt || 0)));
+    .sort((a, b) => ((a.status === '귀가') - (b.status === '귀가')) || (visitStart(a) - visitStart(b)));
 }
 
 function render() {
@@ -312,14 +314,14 @@ function render() {
       const done = p.status === '귀가';
       const cls = ['row', 'grid', p.id === selected ? 'sel' : '', p.call ? 'call' : '', done ? 'done' : ''].join(' ');
       const tags = (p.call ? `<span class="tag call${p.call.seenAt ? ' seen' : ''}">📣 콜요청</span>` : '')
-        + (p.createdAt && !isToday(p.createdAt, now) ? '<span class="tag old">이전 날짜</span>' : '');
+        + (!isToday(visitStart(p), now) ? '<span class="tag old">이전 날짜</span>' : '');
       const tl = logList(p).length ? `<div class="tl"><span class="lbl">동선</span>${routeHtml(p)}</div>` : '';
       return `<div class="${cls}" data-id="${p.id}">
         <div><div class="nm">${esc(displayName(p))}${tags}</div>${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}</div>
         <div><span class="badge" style="${badgeStyle(p.status)}">${esc(p.status)}</span></div>
         <div class="c-el"><span class="el tick" data-k="el" data-id="${p.id}"></span></div>
         <div class="c-ack"><span class="ack tick" data-k="ack" data-id="${p.id}"></span></div>
-        <div class="c-when when">${fmtClock(p.createdAt)}</div>
+        <div class="c-when when">${fmtClock(visitStart(p))}</div>
         ${tl}
       </div>`;
     }).join('');
@@ -350,7 +352,7 @@ function tick() {
       else if (p.ackAt) { el.className = 'ack tick ok'; el.textContent = `✓ 확인 ${fmtHM(p.ackAt)}`; }
       else if (p.holdAt) { el.className = 'ack tick hold'; el.textContent = `⏸ 의국 보류 ${fmtHM(p.holdAt)}`; }
       else {
-        const w = now - (p.createdAt || now);
+        const w = now - visitStart(p);
         el.className = 'ack tick ' + (w >= SETTINGS.ackWarnSec * 1000 ? 'late' : 'wait');
         el.textContent = `확인 대기 ${fmtSec(w)}`;
       }

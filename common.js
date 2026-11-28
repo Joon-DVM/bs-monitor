@@ -53,6 +53,8 @@ function setPath(obj, path, val) {
   else cur[last] = val;
 }
 const clone = (o) => JSON.parse(JSON.stringify(o));
+// 동선 기록 한 줄: '상태' 또는 { s: '상태', undo: true } (귀가 되돌리기 표시)
+const logEntry = (x) => (typeof x === 'string' ? { s: x } : { ...x });
 const newId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 export async function createStore() {
@@ -115,7 +117,7 @@ function createLocalStore() {
       const p = state.patients[id]; if (!p) return;
       const t = Date.now();
       for (const k in fields) setPath(p, k, resolveNow(fields[k], t));
-      if (logStatus) { p.log = p.log || {}; p.log['l' + t + Math.random().toString(36).slice(2, 5)] = { s: logStatus, at: t }; }
+      if (logStatus) { p.log = p.log || {}; p.log['l' + t + Math.random().toString(36).slice(2, 5)] = { ...logEntry(logStatus), at: t }; }
       commit();
     },
     async remove(id) { delete state.patients[id]; commit(); },
@@ -166,7 +168,7 @@ async function createFirebaseStore() {
       const ts = serverTimestamp();
       const u = {};
       for (const k in fields) u[`${ROOT}/${id}/${k}`] = resolveNow(fields[k], ts) ?? null;
-      if (logStatus) u[`${ROOT}/${id}/log/${push(ref(db)).key}`] = { s: logStatus, at: ts };
+      if (logStatus) u[`${ROOT}/${id}/log/${push(ref(db)).key}`] = { ...logEntry(logStatus), at: ts };
       await update(ref(db), u);
     },
     async remove(id) { await remove(ref(db, `${ROOT}/${id}`)); },
@@ -290,7 +292,7 @@ export function fmtStay(ms) { return (ms == null || ms < 60000) ? '방금' : fmt
 // 내원 후 경과 + 마지막 상태 변경 후 경과
 export function stayParts(p, now) {
   return {
-    visit: `내원 후 ${fmtStay(now - (p.createdAt || now))}`,
+    visit: `내원 후 ${fmtStay(now - visitStart(p))}`,
     status: `${p.status} 후 ${fmtStay(now - (p.statusAt || now))}`,
     level: waitLevel(p, now),
   };
@@ -307,8 +309,25 @@ export const logList = (p) => Object.values(p.log || {}).filter((l) => l && l.at
 // - 첫 기록은 '내원'
 // - 잠깐 거쳐 가는 상태(config transientStatuses)는 마지막(현재) 상태일 때만 표시
 // - 숨긴 뒤 같은 상태가 연달아 남으면 하나로 합침 (먼저 시각 유지, 진료실은 재입실이므로 합치지 않음)
+// 이번 방문의 기록만: 마지막 '귀가' 이후 (귀가를 되돌린 경우는 같은 방문으로 이어짐)
+function visitLogs(p) {
+  const all = logList(p);
+  const logs = [];
+  for (let i = 0; i < all.length; i++) {
+    if (all[i].s === '귀가' && all[i + 1] && all[i + 1].undo) { i++; continue; }  // 되돌린 귀가: 둘 다 건너뜀
+    logs.push(all[i]);
+  }
+  let start = 0;
+  logs.forEach((l, i) => { if (l.s === '귀가' && i < logs.length - 1) start = i + 1; });
+  return logs.slice(start);
+}
+// 이번 방문 시작 시각 (귀가 후 다시 원내로 바뀌면 그 시각)
+export function visitStart(p) {
+  const v = visitLogs(p);
+  return (v[0] && v[0].at) || p.createdAt || Date.now();
+}
 export function routeSteps(p) {
-  const logs = logList(p);
+  const logs = visitLogs(p);
   const transient = SETTINGS.transientStatuses || [];
   const out = [];
   logs.forEach((l, i) => {
@@ -321,7 +340,10 @@ export function routeSteps(p) {
   return out;
 }
 export function routeHtml(p) {
-  return routeSteps(p).map((st, i) => `${i ? '<span class="arr">→</span>' : ''}<span class="step${st.first ? ' first' : ''}">${fmtHM(st.at)} ${esc(st.label)}</span>`).join('');
+  // 오늘이 아닌 기록은 날짜도 함께 표시 (예: 11/27 21:06)
+  const today = new Date().toDateString();
+  const when = (t) => { const d = new Date(t); return (d.toDateString() === today ? '' : `${d.getMonth() + 1}/${d.getDate()} `) + fmtHM(t); };
+  return routeSteps(p).map((st, i) => `${i ? '<span class="arr">→</span>' : ''}<span class="step${st.first ? ' first' : ''}">${when(st.at)} ${esc(st.label)}</span>`).join('');
 }
 export const isToday = (t, now) => { const a = new Date(t), b = new Date(now); return a.toDateString() === b.toDateString(); };
 
