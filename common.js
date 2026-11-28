@@ -487,8 +487,15 @@ export function visitStats(p) {
   const start = logs[0].at;
   const last = logs[logs.length - 1];
   const end = last.s === '귀가' ? last.at : (p.statusAt || last.at);
-  let care = 0, rooms = 0, firstRoom = null, lastRoomEnd = null;
+  let care = 0, rooms = 0, firstRoom = null, lastRoomEnd = null, meet = 0, meets = 0;
   logs.forEach((l, i) => {
+    // 면회: 면회대기중이 된 순간부터 다른 상태로 바뀔 때까지 (연달아 있으면 한 번으로)
+    if (l.s === '면회대기중') {
+      const segEnd = logs[i + 1] ? logs[i + 1].at : end;
+      meet += Math.max(0, segEnd - l.at);
+      if (!(i > 0 && logs[i - 1].s === '면회대기중')) meets++;
+      return;
+    }
     if (STATUS[l.s]?.group !== 'room') return;
     const segEnd = logs[i + 1] ? logs[i + 1].at : end;
     rooms++;
@@ -497,7 +504,7 @@ export function visitStats(p) {
     lastRoomEnd = segEnd;
   });
   return {
-    start, end, total: Math.max(0, end - start), rooms, care,
+    start, end, total: Math.max(0, end - start), rooms, care, meet, meets,
     toFirst: firstRoom == null ? null : Math.max(0, firstRoom - start),
     afterCare: lastRoomEnd == null ? null : Math.max(0, end - lastRoomEnd),
   };
@@ -511,12 +518,13 @@ export function fmtDur(ms) {
 }
 export function visitStatsParts(p) {
   const v = visitStats(p); if (!v) return null;
-  return {
-    total: `총방문 ${fmtDur(v.total)} 후 퇴원`,
-    items: v.rooms
-      ? [`총 진료 ${fmtDur(v.care)}${v.rooms > 1 ? ` (${v.rooms}회)` : ''}`, `진료시작까지 ${fmtDur(v.toFirst)}`, `진료종료 후 퇴원까지 ${fmtDur(v.afterCare)}`]
-      : ['진료실 기록 없음'],
-  };
+  const items = [v.rooms ? `수의사상담시간 : ${fmtDur(v.care)}` : '수의사상담 기록 없음'];
+  if (v.meets) items.push(`총면회시간 : ${fmtDur(v.meet)}${v.meets > 1 ? ` (${v.meets}번)` : ''}`);
+  if (v.rooms) {
+    items.push(`진료시작까지 ${fmtDur(v.toFirst)}`);
+    items.push(v.afterCare < 60000 ? '진료종료후 바로 귀가' : `진료종료후 ${fmtDur(v.afterCare)}후 귀가`);
+  }
+  return { total: `총체류시간 : ${fmtDur(v.total)}`, items };
 }
 const dateKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
