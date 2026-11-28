@@ -123,10 +123,10 @@ function createLocalStore() {
     now: () => Date.now(),
     onPatients(cb) { listeners.add(cb); cb(normalizePatients(clone(state.patients))); },
     onConnection(cb) { cb(true); },
-    async add({ cat, owner, memo }) {
+    async add({ cat, owner, memo, vet }) {
       const id = newId(); const t = Date.now();
       state.patients[id] = {
-        cat, owner, memo: memo || '', status: INITIAL_STATUS, statusAt: t, createdAt: t,
+        cat, owner, memo: memo || '', vet: vet || '', status: INITIAL_STATUS, statusAt: t, createdAt: t,
         ackAt: null, call: null, log: { ['l' + t]: { s: INITIAL_STATUS, at: t } },
       };
       commit(); return id;
@@ -187,11 +187,11 @@ async function createFirebaseStore() {
     now: () => Date.now() + offset,
     onPatients(cb, onError) { return onValue(ref(db, ROOT), (s) => cb(normalizePatients(s.val() || {})), onError); },
     onConnection(cb) { onValue(ref(db, '.info/connected'), (s) => cb(!!s.val())); },
-    async add({ cat, owner, memo }) {
+    async add({ cat, owner, memo, vet }) {
       const r = push(ref(db, ROOT));
       const ts = serverTimestamp();
       await set(r, {
-        cat, owner, memo: memo || '', status: INITIAL_STATUS, statusAt: ts, createdAt: ts,
+        cat, owner, memo: memo || '', vet: vet || '', status: INITIAL_STATUS, statusAt: ts, createdAt: ts,
         log: { l0: { s: INITIAL_STATUS, at: ts } },
       });
       return r.key;
@@ -568,6 +568,81 @@ export function visitStatsHtml(p) {
 }
 const dateKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
+// ── 한글 초성 자동완성 ───────────────────────
+const CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const JONG = ['', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'];
+const hParts = (ch) => { const c = (ch || '').charCodeAt(0) - 0xAC00; return c >= 0 && c <= 11171 ? { cho: Math.floor(c / 588), jung: Math.floor((c % 588) / 28), jong: c % 28 } : null; };
+const hJoin = (cho, jung, jong = 0) => String.fromCharCode(0xAC00 + cho * 588 + jung * 28 + jong);
+// 입력 한 글자(q)가 이름 한 글자(n)와 맞는지: 같은 글자 / 초성만(ㄱ) / 받침 없이 치는 중(기 → 김)
+function hCharMatch(q, n) {
+  if (q === n) return true;
+  const np = hParts(n); if (!np) return false;
+  const ci = CHO.indexOf(q); if (ci >= 0) return np.cho === ci;
+  const qp = hParts(q);
+  return !!qp && qp.jong === 0 && qp.cho === np.cho && qp.jung === np.jung;
+}
+function hMatchAt(q, name, at) {
+  if (q.length + at > name.length + 1) return false;
+  for (let i = 0; i < q.length; i++) {
+    const last = i === q.length - 1;
+    if (at + i < name.length && hCharMatch(q[i], name[at + i])) continue;
+    // 치는 중에 다음 글자 초성이 받침으로 붙은 경우 (유숨 → 유수민)
+    const qp = last && hParts(q[i]);
+    if (qp && qp.jong && at + i + 1 < name.length) {
+      const ci = CHO.indexOf(JONG[qp.jong]);
+      if (ci >= 0 && hCharMatch(hJoin(qp.cho, qp.jung), name[at + i]) && hParts(name[at + i + 1])?.cho === ci) continue;
+    }
+    return false;
+  }
+  return true;
+}
+// 성으로 시작하는 이름을 먼저, 그다음 이름 중간에서 맞는 것 ('형' → 김형준)
+export function hangulSearch(query, names) {
+  const q = String(query || '').replace(/\s+/g, '');
+  if (!q) return [];
+  const front = [], mid = [];
+  for (const n of names) {
+    if (hMatchAt(q, n, 0)) front.push(n);
+    else if ([...Array(n.length).keys()].slice(1).some((i) => hMatchAt(q, n, i))) mid.push(n);
+  }
+  return [...front, ...mid];
+}
+// 입력칸 자동완성: 후보 목록이 아래에 뜨고 첫 후보가 선택됨.
+// Tab = 선택 후 다음 칸으로, Enter = 선택 후 onEnter, ↑↓ = 후보 이동, Esc = 닫기. 후보에 없으면 친 그대로 둠.
+export function setupAutocomplete(input, getNames, { onEnter } = {}) {
+  const box = document.createElement('div');
+  box.className = 'ac-box'; box.hidden = true;
+  input.parentElement.style.position = 'relative';
+  input.parentElement.appendChild(box);
+  let items = [], idx = 0, lastEnter = 0;
+  const paint = () => {
+    box.hidden = !items.length;
+    box.innerHTML = items.map((n, i) => `<div class="ac-item${i === idx ? ' on' : ''}" data-i="${i}">${esc(n)}</div>`).join('');
+  };
+  const update = () => { items = hangulSearch(input.value, getNames()); idx = 0; paint(); };
+  const accept = () => {
+    const pick = items[idx]; items = []; paint();
+    if (pick) setTimeout(() => { input.value = pick; }, 0);  // 한글 조합이 끝난 뒤 값 바꿈
+    return pick;
+  };
+  input.addEventListener('input', update);
+  input.addEventListener('blur', () => setTimeout(() => { items = []; paint(); }, 150));
+  box.addEventListener('mousedown', (e) => { const it = e.target.closest('.ac-item'); if (it) { idx = Number(it.dataset.i); accept(); e.preventDefault(); } });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' && items.length) { idx = (idx + 1) % items.length; paint(); e.preventDefault(); return; }
+    if (e.key === 'ArrowUp' && items.length) { idx = (idx - 1 + items.length) % items.length; paint(); e.preventDefault(); return; }
+    if (e.key === 'Escape') { items = []; paint(); return; }
+    if (e.key === 'Tab' && !e.shiftKey && items.length) { accept(); return; }  // 기본 Tab 동작으로 다음 칸 이동
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const now = Date.now(); if (now - lastEnter < 80) return; lastEnter = now;  // 조합 중 Enter 중복 방지
+      if (items.length) accept();
+      if (onEnter) setTimeout(onEnter, 10);
+    }
+  });
+  return { clear: () => { input.value = ''; items = []; paint(); } };
+}
+
 // ── 카드 격자 ───────────────────────────────
 // 원장님 카드는 격자 밖 맨 위에 한 줄 전체, 나머지는 같은 너비·같은 높이의 격자
 export function gridHtml(list, cardHtml, gridClass) {
@@ -608,7 +683,7 @@ export function cleanupPlan(patients, calls, now) {
     const v = visitStats(p);
     if (v && !isSilent(p)) {
       plan.visits[`${dateKey(v.start)}/${id}`] = {
-        cat: p.cat || '', owner: p.owner || '', ...v,
+        cat: p.cat || '', owner: p.owner || '', vet: p.vet || '', ...v,
         log: visitLogs(p).map((l) => ({ s: l.s, at: l.at })),
       };
     }

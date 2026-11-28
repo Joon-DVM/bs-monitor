@@ -44,6 +44,7 @@
   .pc.done { opacity: .5; }
   .pc-h { display: flex; align-items: flex-start; gap: 10px; }
   .pc-h .nm { font-size: 22px; font-weight: 900; letter-spacing: -.4px; flex: 1; word-break: keep-all; }
+  .nm .vet { margin-left: 8px; font-size: 13px; font-weight: 800; color: #cbd5e1; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 2px 8px; vertical-align: 3px; letter-spacing: 0; }
   .meta { color: var(--muted); font-size: 14px; }
   .vstats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
   .vchip { padding: 5px 11px; border: 1.5px solid #334155; background: #1e293b; border-radius: 10px; font-size: 13px; font-weight: 800; color: #e2e8f0; white-space: nowrap; }
@@ -201,7 +202,7 @@ function render() {
       <div class="arrive-h"><div class="t">🔔 대기 알림 ${unacked.length}건</div><div class="sp"></div>
         ${unacked.length > 1 ? '<button class="btn holdall" data-act="holdall">모두 보류</button><button class="btn ackall" data-act="ackall">모두 완료</button>' : ''}</div>
       <div class="arrive-list">${unacked.map((p) => `
-        <div class="arrive-item"><div><div class="nm">${esc(displayName(p))}</div>
+        <div class="arrive-item"><div><div class="nm">${esc(displayName(p))}${p.vet ? `<span class="vet">🩺 ${esc(p.vet)}</span>` : ''}</div>
           <div class="m"><b>${esc(p.status)}</b> ${fmtHM(alertOf(p).at)} · <span class="cd tick" data-k="cd" data-id="${p.id}"></span>${p.memo ? ' · 📝 ' + esc(p.memo) : ''}</div></div>
           <div class="sp"></div><button class="btn hold" data-act="hold" data-id="${p.id}">보류</button><button class="btn ack" data-act="ack" data-id="${p.id}">${ackLabel(p)}</button></div>`).join('')}
       </div>
@@ -228,7 +229,7 @@ function render() {
       ? `<div class="callst">📣 콜요청 중 · <span class="tick" data-k="ago" data-t="${p.call.at || now}"></span> 전 · ${p.call.seenAt ? '<span class="ok">리셉션 확인 ✓</span>' : '리셉션 알림 중…'}</div>`
       : '';
     return `<div class="${cls}">
-      <div class="pc-h"><div class="nm">${esc(displayName(p))}</div><span class="badge" style="${badgeStyle(p.status)}">${esc(statusLabel(p))}</span></div>
+      <div class="pc-h"><div class="nm">${esc(displayName(p))}${p.vet && !isSilent(p) ? `<span class="vet">🩺 ${esc(p.vet)}</span>` : ''}</div><span class="badge" style="${badgeStyle(p.status)}">${esc(statusLabel(p))}</span></div>
       <div class="meta"><span class="tick" data-k="el" data-id="${p.id}"></span></div>
       ${p.memo ? `<div class="memo">📝 ${esc(p.memo)}</div>` : ''}
       ${steps && !isSilent(p) ? `<div class="tl">${routeHtml(p)}</div>` : ''}
